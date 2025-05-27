@@ -252,6 +252,17 @@
   #include "feature/easythreed_ui.h"
 #endif
 
+#include "module/pcf8574.h"
+#include "module/ads1115.h"
+
+#if ENABLED(USE_PCF8574_FOR_BED_OUTPUTS)
+  static PCF8574 bedExpander;
+#endif
+
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  static ADS1115 tempSensor;
+#endif
+
 PGMSTR(M112_KILL_STR, "M112 Shutdown");
 
 MarlinState marlin_state = MF_INITIALIZING;

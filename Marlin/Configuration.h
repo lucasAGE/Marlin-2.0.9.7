@@ -478,9 +478,7 @@
  * 
  *   I2C / ADC externos
  *  -------
- *   3000 : Sensor de cama lido via ADS1115 (conectado por I2C)
- *          Requer definir BED_ADS1115_SENSOR_COUNT com valor de 1 a 4
- *
+ *   *
  *  Analog Thermistors - 1kΩ pullup - Atypical, and requires changing out the 4.7kΩ pullup for 1kΩ.
  *  -------                           (but gives greater accuracy and more stable PID)
  *    51 : 100kΩ  EPCOS (1kΩ pullup)
@@ -521,12 +519,17 @@
 #define TEMP_SENSOR_5 0
 #define TEMP_SENSOR_6 0
 #define TEMP_SENSOR_7 0
-#define TEMP_SENSOR_BED 0
+#define TEMP_SENSOR_BED      0
+#define TEMP_SENSOR_BED_0  3000
+#define TEMP_SENSOR_BED_1  3000
+#define TEMP_SENSOR_BED_2  3000
+#define TEMP_SENSOR_BED_3  3000
 #define TEMP_SENSOR_PROBE 0
 #define TEMP_SENSOR_CHAMBER 0
 #define TEMP_SENSOR_COOLER 0
 #define TEMP_SENSOR_BOARD 0
 #define TEMP_SENSOR_REDUNDANT 0
+
 
 
 
@@ -539,10 +542,6 @@
 //#define MAX31865_CALIBRATION_OHMS_0 430   // (Ω) Typically 430 for Adafruit PT100; 4300 for Adafruit PT1000
 //#define MAX31865_SENSOR_OHMS_1      100
 //#define MAX31865_CALIBRATION_OHMS_1 430
-
-#if TEMP_SENSOR_BED == 3000
-  #define BED_ADS1115_SENSOR_COUNT 4  // Altere para 1, 2, 3 ou 4
-#endif
 
 #define TEMP_RESIDENCY_TIME         10  // (seconds) Time to wait for hotend to "settle" in M109
 #define TEMP_WINDOW                  1  // (°C) Temperature proximity for the "temperature reached" timer
