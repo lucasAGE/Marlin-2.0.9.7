@@ -36,6 +36,22 @@
 #include "planner.h"
 #include "printcounter.h"
 
+    //#####################################################################################################
+    //########################          TCC LUCAS          ################################################
+    //#####################################################################################################
+
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      #include "ads1115.h"
+      extern ADS1115 tempSensor;  // instância criada em MarlinCore.cpp
+
+      raw_adc_t Temperature::readBedRaw(const uint8_t bed) {
+        // 1) Leia o raw 16-bit do ADS1115
+        int16_t raw16 = tempSensor.readRaw(bed);
+        // 2) Escalone para a faixa de termistor (p.ex. 0–1023)
+        return map(raw16, 0, 32767, 0, MAX_RAW_THERMISTOR_VALUE);
+      }
+    #endif
+
 #if EITHER(HAS_COOLER, LASER_COOLANT_FLOW_METER)
   #include "../feature/cooler.h"
   #include "../feature/spindle_laser.h"
@@ -189,6 +205,11 @@
 #if HAS_SERVOS
   #include "servo.h"
 #endif
+
+
+
+
+
 
 #if ANY(TEMP_SENSOR_0_IS_THERMISTOR, TEMP_SENSOR_1_IS_THERMISTOR, TEMP_SENSOR_2_IS_THERMISTOR, TEMP_SENSOR_3_IS_THERMISTOR, \
         TEMP_SENSOR_4_IS_THERMISTOR, TEMP_SENSOR_5_IS_THERMISTOR, TEMP_SENSOR_6_IS_THERMISTOR, TEMP_SENSOR_7_IS_THERMISTOR )
@@ -2307,6 +2328,13 @@ void Temperature::task() {
 void Temperature::updateTemperaturesFromRawValues() {
 
   hal.watchdog_refresh(); // Reset because raw_temps_ready was set by the interrupt
+
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+      temp_bed[b].raw     = readBedRaw(b);
+      temp_bed[b].celsius = analog_to_celsius_bed(temp_bed[b].raw, b);
+    }
+  #endif
 
   TERN_(TEMP_SENSOR_0_IS_MAX_TC, temp_hotend[0].setraw(READ_MAX_TC(0)));
   TERN_(TEMP_SENSOR_1_IS_MAX_TC, temp_hotend[1].setraw(READ_MAX_TC(1)));

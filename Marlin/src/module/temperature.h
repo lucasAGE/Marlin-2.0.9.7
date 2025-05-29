@@ -48,16 +48,30 @@
 #define HOTEND_INDEX TERN(HAS_MULTI_HOTEND, e, 0)
 #define E_NAME TERN_(HAS_MULTI_HOTEND, e)
 
+
+//#####################################################################################################
+//########################          TCC LUCAS          ################################################
+//#####################################################################################################
 // Element identifiers. Positive values are hotends. Negative values are other heaters or coolers.
 typedef enum : int8_t {
   H_REDUNDANT = HID_REDUNDANT,
-  H_COOLER = HID_COOLER,
-  H_PROBE = HID_PROBE,
-  H_BOARD = HID_BOARD,
-  H_CHAMBER = HID_CHAMBER,
-  H_BED = HID_BED,
-  H_E0 = HID_E0, H_E1, H_E2, H_E3, H_E4, H_E5, H_E6, H_E7,
-  H_NONE = -128
+  H_COOLER    = HID_COOLER,
+  H_PROBE     = HID_PROBE,
+  H_BOARD     = HID_BOARD,
+  H_CHAMBER   = HID_CHAMBER,
+
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    // Se multi‐bed ativado, tratamos as 4 camas como H_BED, H_BED1, H_BED2, H_BED3
+    H_BED   = HID_BED,  // cama 0, mesmo valor legacy
+    H_BED1,            // HID_BED + 1
+    H_BED2,            // HID_BED + 2
+    H_BED3,            // HID_BED + 3
+  #else
+    // Se não, mantemos apenas a cama única
+    H_BED   = HID_BED,
+  #endif
+    H_E0 = HID_E0, H_E1, H_E2, H_E3, H_E4, H_E5, H_E6, H_E7,
+    H_NONE = -128
 } heater_id_t;
 
 // PID storage
@@ -393,8 +407,15 @@ class Temperature {
       static const celsius_t hotend_maxtemp[HOTENDS];
       static celsius_t hotend_max_target(const uint8_t e) { return hotend_maxtemp[e] - (HOTEND_OVERSHOOT); }
     #endif
+
+    //#####################################################################################################
+    //########################          TCC LUCAS          ################################################
+    //#####################################################################################################
     #if HAS_HEATED_BED
-      static bed_info_t temp_bed;
+      // Vetor de informações de cada cama (0…MULTI_BED_COUNT-1)
+     static bed_info_t temp_bed[MULTI_BED_COUNT];
+
+     
     #endif
     #if HAS_TEMP_PROBE
       static probe_info_t temp_probe;
@@ -463,40 +484,80 @@ class Temperature {
       static void singlenozzle_change(const uint8_t old_tool, const uint8_t new_tool);
     #endif
 
-    #if HEATER_IDLE_HANDLER
 
-      // Heater idle handling. Marlin creates one per hotend and one for the heated bed.
-      typedef struct {
-        millis_t timeout_ms;
-        bool timed_out;
-        inline void update(const millis_t &ms) { if (!timed_out && timeout_ms && ELAPSED(ms, timeout_ms)) timed_out = true; }
-        inline void start(const millis_t &ms) { timeout_ms = millis() + ms; timed_out = false; }
-        inline void reset() { timeout_ms = 0; timed_out = false; }
-        inline void expire() { start(0); }
-      } heater_idle_t;
 
-      // Indices and size for the heater_idle array
-      enum IdleIndex : int8_t {
-        _II = -1
+       #if HEATER_IDLE_HANDLER
 
-        #define _IDLE_INDEX_E(N) ,IDLE_INDEX_E##N
-        REPEAT(HOTENDS, _IDLE_INDEX_E)
-        #undef _IDLE_INDEX_E
+    // Heater idle handling. Marlin cria um por hotend e um por cama (ou várias, se multi‐bed).
+    typedef struct {
+    millis_t timeout_ms;
+    bool     timed_out;
+    inline void update(const millis_t &ms) {
+      if (!timed_out && timeout_ms && ELAPSED(ms, timeout_ms)) timed_out = true;
+    }
+    inline void start(const millis_t &ms) {
+      timeout_ms = millis() + ms;
+      timed_out  = false;
+    }
+    inline void reset() {
+      timeout_ms = 0;
+      timed_out  = false;
+    }
+    inline void expire() { start(0); }
+    } heater_idle_t;
 
-        OPTARG(HAS_HEATED_BED, IDLE_INDEX_BED)
+  // Índices e tamanho para o array heater_idle[]
+  enum IdleIndex : int8_t {
+    _II = -1
 
-        , NR_HEATER_IDLE
-      };
+    // Hotends: IDLE_INDEX_E0, E1, E2…
+    #define _IDLE_INDEX_E(N) , IDLE_INDEX_E##N
+    REPEAT(HOTENDS, _IDLE_INDEX_E)
+    #undef _IDLE_INDEX_E
 
-      // Convert the given heater_id_t to idle array index
-      static IdleIndex idle_index_for_id(const int8_t heater_id) {
-        TERN_(HAS_HEATED_BED, if (heater_id == H_BED) return IDLE_INDEX_BED);
-        return (IdleIndex)_MAX(heater_id, 0);
-      }
+     //#####################################################################################################
+    //########################          TCC LUCAS          ################################################
+    //#####################################################################################################
 
-      static heater_idle_t heater_idle[NR_HEATER_IDLE];
+    // Beds: IDLE_INDEX_BED0…BED3 (ou só IDLE_INDEX_BED, se single-bed)
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      #define _IDLE_INDEX_B(N) , IDLE_INDEX_BED##N
+      REPEAT(MULTI_BED_COUNT, _IDLE_INDEX_B)
+      #undef _IDLE_INDEX_B
+    #elif HAS_HEATED_BED
+      , IDLE_INDEX_BED
+    #endif
 
-    #endif // HEATER_IDLE_TIMER
+    , NR_HEATER_IDLE
+  };
+
+    //#####################################################################################################
+    //########################          TCC LUCAS          ################################################
+    //#####################################################################################################
+  
+    /**
+     * Mapeia um heater_id_t (H_E0…H_BED3) para o seu IdleIndex correspondente
+     * (para acessar heater_idle[...]).
+     */
+    static IdleIndex idle_index_for_id(const int8_t heater_id) {
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        // camas 0…MULTI_BED_COUNT-1, começando em H_BED
+        if (heater_id >= H_BED && heater_id < H_BED + MULTI_BED_COUNT) {
+          return IdleIndex(IDLE_INDEX_BED0 + (heater_id - H_BED));
+        }
+      #elif HAS_HEATED_BED
+        if (heater_id == H_BED) return IDLE_INDEX_BED;
+      #endif
+      // Hotends e redundantes seguem o padrão original (E0…En)
+      return (IdleIndex)_MAX(heater_id, 0);
+    }
+
+
+  // Array de handlers de idle (um por hotend + um por cada cama)
+  static heater_idle_t heater_idle[NR_HEATER_IDLE];
+
+  #endif // HEATER_IDLE_HANDLER
+
 
     #if HAS_ADC_BUTTONS
       static uint32_t current_ADCKey_raw;
@@ -530,13 +591,24 @@ class Temperature {
       static temp_range_t temp_range[HOTENDS];
     #endif
 
+    //#####################################################################################################
+    //########################          TCC LUCAS          ################################################
+    //#####################################################################################################
+
     #if HAS_HEATED_BED
+      // Watchdog de runaway, um por cama
       #if ENABLED(WATCH_BED)
-        static bed_watch_t watch_bed;
+        static bed_watch_t watch_bed[MULTI_BED_COUNT];
       #endif
-      IF_DISABLED(PIDTEMPBED, static millis_t next_bed_check_ms);
-      static raw_adc_t mintemp_raw_BED, maxtemp_raw_BED;
+
+      // Próximo check bang–bang, um por cama (se não usar PID por cama)
+      IF_DISABLED(PIDTEMPBED, static millis_t next_bed_check_ms[MULTI_BED_COUNT]);
+
+      // Valores raw mínimos e máximos por cama
+      static raw_adc_t mintemp_raw_BED[MULTI_BED_COUNT];
+      static raw_adc_t maxtemp_raw_BED[MULTI_BED_COUNT];
     #endif
+
 
     #if HAS_HEATED_CHAMBER
       #if ENABLED(WATCH_CHAMBER)
@@ -639,9 +711,27 @@ class Temperature {
     #if HAS_HOTEND
       static celsius_float_t analog_to_celsius_hotend(const raw_adc_t raw, const uint8_t e);
     #endif
+
+        //#####################################################################################################
+    //########################          TCC LUCAS          ################################################
+    //#####################################################################################################
+
     #if HAS_HEATED_BED
-      static celsius_float_t analog_to_celsius_bed(const raw_adc_t raw);
+      /**
+       * Converte raw ADC em °C para a cama `bed` (0…MULTI_BED_COUNT-1).
+       */
+      static celsius_float_t analog_to_celsius_bed(const raw_adc_t raw, const uint8_t bed);
     #endif
+
+
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    /**
+    * Lê o valor bruto do ADS1115 para a cama `bed`,
+    * escalona de 16-bit → 10-bit e retorna raw_adc_t.
+    */
+    static raw_adc_t readBedRaw(const uint8_t bed);
+    #endif
+
     #if HAS_TEMP_CHAMBER
       static celsius_float_t analog_to_celsius_chamber(const raw_adc_t raw);
     #endif
@@ -813,37 +903,131 @@ class Temperature {
     #endif // HAS_HOTEND
 
     #if HAS_HEATED_BED
+      /**
+       * Controla o acionamento dos MOSFETs via PCF8574 para as camas:
+       * em multi‐bed, varre temp_bed[0..MULTI_BED_COUNT-1],
+       * em single‐bed, só a cama única.
+       * Deve ser chamado periodicamente (ex: após updateTemperaturesFromRawValues()).
+       */
+      static void controlBedHeaters(const millis_t &ms);
+    #endif
 
-      #if ENABLED(SHOW_TEMP_ADC_VALUES)
-        static raw_adc_t rawBedTemp()  { return temp_bed.getraw(); }
-      #endif
-      static celsius_float_t degBed()  { return temp_bed.celsius; }
-      static celsius_t wholeDegBed()   { return static_cast<celsius_t>(degBed() + 0.5f); }
-      static celsius_t degTargetBed()  { return temp_bed.target; }
-      static bool isHeatingBed()       { return temp_bed.target > temp_bed.celsius; }
-      static bool isCoolingBed()       { return temp_bed.target < temp_bed.celsius; }
-      static bool degBedNear(const celsius_t temp) {
-        return ABS(wholeDegBed() - temp) < (TEMP_BED_HYSTERESIS);
-      }
+    //#####################################################################################################
+    //########################          TCC LUCAS          ################################################
+    //#####################################################################################################
 
-      // Start watching the Bed to make sure it's really heating up
-      static void start_watching_bed() { TERN_(WATCH_BED, watch_bed.restart(degBed(), degTargetBed())); }
+    #if HAS_HEATED_BED
 
-      static void setTargetBed(const celsius_t celsius) {
-        TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
-        temp_bed.target = _MIN(celsius, BED_MAX_TARGET);
-        start_watching_bed();
-      }
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      
+        #if ENABLED(SHOW_TEMP_ADC_VALUES)
+          /** Retorna a leitura raw (10-bit) da cama `bed`. */
+          static raw_adc_t rawBedTemp(const uint8_t bed) {
+            return temp_bed[bed].raw;
+          }
+        #endif
 
-      static bool wait_for_bed(const bool no_wait_for_cooling=true
-        OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel=false)
-      );
+        /** Temperatura atual em °C da cama `bed`. */
+        static celsius_float_t degBed(const uint8_t bed) {
+          return temp_bed[bed].celsius;
+        }
+        /** Valor inteiro arredondado da temperatura. */
+        static celsius_t wholeDegBed(const uint8_t bed) {
+          return static_cast<celsius_t>(degBed(bed) + 0.5f);
+        }
+        /** Setpoint em °C da cama `bed`. */
+        static celsius_t degTargetBed(const uint8_t bed) {
+          return temp_bed[bed].target;
+        }
+        /** true se a cama `bed` estiver aquecendo. */
+        static bool isHeatingBed(const uint8_t bed) {
+          return temp_bed[bed].target > temp_bed[bed].celsius;
+        }
+        /** true se a cama `bed` estiver resfriando. */
+        static bool isCoolingBed(const uint8_t bed) {
+          return temp_bed[bed].target < temp_bed[bed].celsius;
+        }
+        /** true se a temperatura arredondada estiver dentro da histerese de `temp`. */
+        static bool degBedNear(const uint8_t bed, const celsius_t temp) {
+          return ABS(wholeDegBed(bed) - temp) < TEMP_BED_HYSTERESIS;
+        }
 
-      static void wait_for_bed_heating();
+        /** Inicia o watchdog de runaway para a cama `bed`. */
+        static void start_watching_bed(const uint8_t bed) {
+          TERN_(WATCH_BED, watch_bed[bed].restart(degBed(bed), degTargetBed(bed)));
+        }
 
-      static void manage_heated_bed(const millis_t &ms);
+        /** Ajusta o setpoint da cama `bed`. */
+        static void setTargetBed(const uint8_t bed, const celsius_t celsius) {
+          TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
+          temp_bed[bed].target = _MIN(celsius, BED_MAX_TARGET);
+          start_watching_bed(bed);
+        }
+
+        /** Espera até a cama `bed` atingir o setpoint (M190). */
+        static bool wait_for_bed(const uint8_t bed,
+          const bool no_wait_for_cooling = true
+          OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+        );
+
+        /** Versão sem bloqueio para uso interno. */
+        static void wait_for_bed_heating(const uint8_t bed);
+
+        /**
+         * Gerencia o controle bang–bang ou PID da cama `bed`.
+         * Deve ser chamado periodicamente com timestamp `ms`.
+         */
+        static void manage_heated_bed(const uint8_t bed, const millis_t &ms);
+
+      #else // single-bed
+
+        #if ENABLED(SHOW_TEMP_ADC_VALUES)
+          static raw_adc_t rawBedTemp() {
+            return temp_bed.getraw();
+          }
+        #endif
+
+        static celsius_float_t degBed() {
+          return temp_bed.celsius;
+        }
+        static celsius_t wholeDegBed() {
+          return static_cast<celsius_t>(degBed() + 0.5f);
+        }
+        static celsius_t degTargetBed() {
+          return temp_bed.target;
+        }
+        static bool isHeatingBed() {
+          return temp_bed.target > temp_bed.celsius;
+        }
+        static bool isCoolingBed() {
+          return temp_bed.target < temp_bed.celsius;
+        }
+        static bool degBedNear(const celsius_t temp) {
+          return ABS(wholeDegBed() - temp) < TEMP_BED_HYSTERESIS;
+        }
+
+        static void start_watching_bed() {
+          TERN_(WATCH_BED, watch_bed.restart(degBed(), degTargetBed()));
+        }
+
+        static void setTargetBed(const celsius_t celsius) {
+          TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
+          temp_bed.target = _MIN(celsius, BED_MAX_TARGET);
+          start_watching_bed();
+        }
+
+        static bool wait_for_bed(const bool no_wait_for_cooling = true
+          OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+        );
+
+        static void wait_for_bed_heating();
+
+        static void manage_heated_bed(const millis_t &ms);
+
+      #endif // ENABLE_MULTI_HEATED_BEDS
 
     #endif // HAS_HEATED_BED
+
 
     #if HAS_TEMP_PROBE
       #if ENABLED(SHOW_TEMP_ADC_VALUES)
@@ -986,17 +1170,45 @@ class Temperature {
 
     #if HEATER_IDLE_HANDLER
 
-      static void reset_hotend_idle_timer(const uint8_t E_NAME) {
-        heater_idle[HOTEND_INDEX].reset();
-        start_watching_hotend(HOTEND_INDEX);
+      /**
+       * Reseta o timer de idle para o hotend `e` e reinicia o watchdog.
+       */
+      static void reset_hotend_idle_timer(const uint8_t e) {
+        // Mapeia H_E0+e → índice no array heater_idle[]
+        const IdleIndex idx = idle_index_for_id(H_E0 + e);
+        heater_idle[idx].reset();
+        start_watching_hotend(e);
       }
 
       #if HAS_HEATED_BED
-        static void reset_bed_idle_timer() {
-          heater_idle[IDLE_INDEX_BED].reset();
-          start_watching_bed();
-        }
-      #endif
+
+      //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
+
+
+        #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+          /**
+           * Reseta o timer de idle para a cama `bed` (0…MULTI_BED_COUNT-1) e reinicia o watchdog.
+           */
+          static void reset_bed_idle_timer(const uint8_t bed) {
+            // Mapeia H_BED+bed → índice no array heater_idle[]
+            const IdleIndex idx = idle_index_for_id(H_BED + bed);
+            heater_idle[idx].reset();
+            start_watching_bed(bed);
+          }
+        #else
+          /**
+           * Reseta o timer de idle para a cama única.
+           */
+          static void reset_bed_idle_timer() {
+            const IdleIndex idx = idle_index_for_id(H_BED);
+            heater_idle[idx].reset();
+            start_watching_bed();
+          }
+        #endif
+
+      #endif // HAS_HEATED_BED
 
     #endif // HEATER_IDLE_HANDLER
 
@@ -1055,9 +1267,27 @@ class Temperature {
     #if HAS_HOTEND
       static float get_pid_output_hotend(const uint8_t e);
     #endif
+
+
+    //#####################################################################################################
+    //########################          TCC LUCAS          ################################################
+    //#####################################################################################################
+
     #if ENABLED(PIDTEMPBED)
-      static float get_pid_output_bed();
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    /**
+     * Retorna a saída PID para a cama `bed` (0…MULTI_BED_COUNT-1).
+     */
+    static float get_pid_output_bed(const uint8_t bed);
+      #else
+    /**
+     * Retorna a saída PID para a cama única.
+     */
+    static float get_pid_output_bed();
     #endif
+    #endif
+
+
     #if ENABLED(PIDTEMPCHAMBER)
       static float get_pid_output_chamber();
     #endif
@@ -1070,46 +1300,88 @@ class Temperature {
 
     #if HAS_THERMAL_PROTECTION
 
-      // Indices and size for the tr_state_machine array. One for each protected heater.
+      // Índices e tamanho para o array tr_state_machine[]. Um por heater protegido.
       enum RunawayIndex : int8_t {
         _RI = -1
+
+        // Hotends: RUNAWAY_IND_E0, E1…
         #if ENABLED(THERMAL_PROTECTION_HOTENDS)
-          #define _RUNAWAY_IND_E(N) ,RUNAWAY_IND_E##N
+          #define _RUNAWAY_IND_E(N) , RUNAWAY_IND_E##N
           REPEAT(HOTENDS, _RUNAWAY_IND_E)
           #undef _RUNAWAY_IND_E
         #endif
-        OPTARG(THERMAL_PROTECTION_BED, RUNAWAY_IND_BED)
+
+        // Beds: RUNAWAY_IND_BED0…BED3 (ou só BED se single-bed)
+        #if ENABLED(THERMAL_PROTECTION_BED) && ENABLED(ENABLE_MULTI_HEATED_BEDS)
+          #define _RUNAWAY_IND_B(N) , RUNAWAY_IND_BED##N
+          REPEAT(MULTI_BED_COUNT, _RUNAWAY_IND_B)
+          #undef _RUNAWAY_IND_B
+        #elif ENABLED(THERMAL_PROTECTION_BED)
+          , RUNAWAY_IND_BED
+        #endif
+
+        // Chamber, Cooler…
         OPTARG(THERMAL_PROTECTION_CHAMBER, RUNAWAY_IND_CHAMBER)
-        OPTARG(THERMAL_PROTECTION_COOLER, RUNAWAY_IND_COOLER)
+        OPTARG(THERMAL_PROTECTION_COOLER,  RUNAWAY_IND_COOLER)
+
         , NR_HEATER_RUNAWAY
       };
 
-      // Convert the given heater_id_t to runaway state array index
+      /**
+       * Converte um heater_id_t (H_E0…H_BED3, etc.) no índice corre-
+       * spondente em tr_state_machine[].
+       */
       static RunawayIndex runaway_index_for_id(const int8_t heater_id) {
-        TERN_(THERMAL_PROTECTION_CHAMBER, if (heater_id == H_CHAMBER) return RUNAWAY_IND_CHAMBER);
-        TERN_(THERMAL_PROTECTION_COOLER,  if (heater_id == H_COOLER)  return RUNAWAY_IND_COOLER);
-        TERN_(THERMAL_PROTECTION_BED,     if (heater_id == H_BED)     return RUNAWAY_IND_BED);
-        return (RunawayIndex)_MAX(heater_id, 0);
+        #if ENABLED(THERMAL_PROTECTION_HOTENDS)
+          if (heater_id >= H_E0 && heater_id < H_E0 + HOTENDS)
+            return RunawayIndex(RUNAWAY_IND_E0 + (heater_id - H_E0));
+        #endif
+
+         //#####################################################################################################
+         //########################          TCC LUCAS          ################################################
+         //#####################################################################################################
+
+        #if ENABLED(THERMAL_PROTECTION_BED) && ENABLED(ENABLE_MULTI_HEATED_BEDS)
+          if (heater_id >= H_BED && heater_id < H_BED + MULTI_BED_COUNT)
+            return RunawayIndex(RUNAWAY_IND_BED0 + (heater_id - H_BED));
+        #elif ENABLED(THERMAL_PROTECTION_BED)
+          if (heater_id == H_BED) return RUNAWAY_IND_BED;
+        #endif
+
+        #if ENABLED(THERMAL_PROTECTION_CHAMBER)
+          if (heater_id == H_CHAMBER) return RUNAWAY_IND_CHAMBER;
+        #endif
+        #if ENABLED(THERMAL_PROTECTION_COOLER)
+          if (heater_id == H_COOLER)  return RUNAWAY_IND_COOLER;
+        #endif
+
+        return RunawayIndex(-1);
       }
 
-      enum TRState : char { TRInactive, TRFirstHeating, TRStable, TRRunaway
-        OPTARG(THERMAL_PROTECTION_VARIANCE_MONITOR, TRMalfunction)
+      enum TRState : char {
+        TRInactive, TRFirstHeating, TRStable, TRRunaway
+        OPTARG(THERMAL_PROTECTION_VARIANCE_MONITOR, , TRMalfunction)
       };
 
       typedef struct {
-        millis_t timer = 0;
-        TRState state = TRInactive;
-        float running_temp;
+        millis_t       timer     = 0;
+        TRState        state     = TRInactive;
+        float          running_temp;
         #if ENABLED(THERMAL_PROTECTION_VARIANCE_MONITOR)
-          millis_t variance_timer = 0;
-          celsius_float_t last_temp = 0.0, variance = 0.0;
+          millis_t     variance_timer = 0;
+          celsius_float_t last_temp   = 0.0, variance = 0.0;
         #endif
-        void run(const_celsius_float_t current, const_celsius_float_t target, const heater_id_t heater_id, const uint16_t period_seconds, const celsius_t hysteresis_degc);
+        void run(const_celsius_float_t current,
+                const_celsius_float_t target,
+                const heater_id_t heater_id,
+                const uint16_t period_seconds,
+                const celsius_t hysteresis_degc);
       } tr_state_machine_t;
 
+      // Um state machine por hotend + por cama(s) + por chamber/cooler
       static tr_state_machine_t tr_state_machine[NR_HEATER_RUNAWAY];
 
     #endif // HAS_THERMAL_PROTECTION
-};
+
 
 extern Temperature thermalManager;

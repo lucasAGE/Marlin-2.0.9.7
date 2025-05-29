@@ -1159,6 +1159,8 @@ void setup() {
   millis_t serial_connect_timeout = millis() + 1000UL;
   while (!MYSERIAL1.connected() && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
 
+  tempSensor.begin(Wire, ADS1115_ADDRESS, ADS1115::GAIN_ONE, ADS1115::DR_128SPS);
+
   #if HAS_MULTI_SERIAL && !HAS_ETHERNET
     #ifndef BAUDRATE_2
       #define BAUDRATE_2 BAUDRATE
