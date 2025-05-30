@@ -61,18 +61,28 @@ typedef enum : int8_t {
   H_CHAMBER   = HID_CHAMBER,
 
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    // Se multi‐bed ativado, tratamos as 4 camas como H_BED, H_BED1, H_BED2, H_BED3
-    H_BED   = HID_BED,  // cama 0, mesmo valor legacy
-    H_BED1,            // HID_BED + 1
-    H_BED2,            // HID_BED + 2
-    H_BED3,            // HID_BED + 3
+    H_BED0  = HID_BED,  // alias para cama 0 (legacy H_BED)
+    H_BED1,             // HID_BED + 1
+    H_BED2,             // HID_BED + 2
+    H_BED3,             // HID_BED + 3
+    H_BED   = H_BED0,   // mantém H_BED como sinônimo de cama 0
   #else
-    // Se não, mantemos apenas a cama única
     H_BED   = HID_BED,
   #endif
+
     H_E0 = HID_E0, H_E1, H_E2, H_E3, H_E4, H_E5, H_E6, H_E7,
     H_NONE = -128
 } heater_id_t;
+
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  static bool wait_for_bed(const uint8_t bed,
+                           const bool no_wait_for_cooling=true,
+                           const bool click_to_cancel=false);
+#else
+  static bool wait_for_bed(const bool no_wait_for_cooling=true,
+                           const bool click_to_cancel=false);
+#endif
+
 
 // PID storage
 typedef struct { float Kp, Ki, Kd;     } PID_t;
