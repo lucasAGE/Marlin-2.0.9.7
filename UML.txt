@@ -1,0 +1,416 @@
+TEMPERATURE.H
+
+
+===========================
+Classe Temperature (Resumo)
+===========================
+
+Atributos públicos (static)
+---------------------------
+ 1.  hotend_info_t temp_hotend[HOTENDS]
+ 2.  bed_info_t temp_bed
+ 3.  probe_info_t temp_probe
+ 4.  chamber_info_t temp_chamber
+ 5.  cooler_info_t temp_cooler
+ 6.  board_info_t temp_board
+ 7.  redundant_info_t temp_redundant
+ 8.  uint8_t autofan_speed[HOTENDS]
+ 9.  uint8_t chamberfan_speed
+10.  uint8_t coolerfan_speed
+11.  uint8_t fan_speed[FAN_COUNT]
+12.  uint8_t soft_pwm_amount_fan[FAN_COUNT]
+13.  uint8_t soft_pwm_count_fan[FAN_COUNT]
+14.  uint8_t soft_pwm_controller_speed
+15.  bool allow_cold_extrude_override
+16.  bool allow_cold_extrude
+17.  celsius_t extrude_min_temp
+18.  celsius_t singlenozzle_temp[EXTRUDERS]
+19.  uint8_t singlenozzle_fan_speed[EXTRUDERS]
+20.  heater_idle_t heater_idle[NR_HEATER_IDLE]
+21.  uint32_t current_ADCKey_raw
+22.  uint16_t ADCKey_count
+23.  int16_t lpq_len
+24.  extra_fan_t extra_fan_speed[FAN_COUNT]
+25.  bool fans_paused
+26.  uint8_t saved_fan_speed[FAN_COUNT]
+27.  uint8_t fan_speed_scaler[FAN_COUNT]
+28.  constexpr millis_t fan_update_interval_ms
+
+Atributos privados (static)
+---------------------------
+29.  volatile bool raw_temps_ready
+30.  hotend_watch_t watch_hotend[HOTENDS]
+31.  int32_t pes_e_position
+32.  int32_t lpq[LPQ_MAX_LEN]
+33.  lpq_ptr_t lpq_ptr
+34.  millis_t preheat_end_time[HOTENDS]
+35.  millis_t fan_update_ms
+36.  bool paused_for_probing
+37.  bed_watch_t watch_bed
+38.  millis_t next_bed_check_ms
+39.  raw_adc_t mintemp_raw_BED
+40.  raw_adc_t maxtemp_raw_BED
+41.  temp_range_t temp_range[HOTENDS]
+42.  consecutive_low_temperature_error[HOTENDS]
+
+Métodos públicos (static)
+-------------------------
+43.  void init()
+44.  void isr()
+45.  void readings_ready()
+46.  void task()
+47.  void disable_all_heaters()
+48.  void cooldown()
+49.  void setTargetHotend(celsius_t, uint8_t)
+50.  celsius_float_t degHotend(uint8_t)
+51.  celsius_t wholeDegHotend(uint8_t)
+52.  celsius_t degTargetHotend(uint8_t)
+53.  bool isHeatingHotend(uint8_t)
+54.  bool isCoolingHotend(uint8_t)
+55.  bool still_heating(uint8_t)
+56.  bool degHotendNear(uint8_t, celsius_t)
+57.  void start_watching_hotend(uint8_t)
+58.  void manage_hotends(const millis_t&)
+59.  bool wait_for_hotend(uint8_t, bool, bool)
+60.  void wait_for_hotend_heating(uint8_t)
+61.  bool hotEnoughToExtrude(uint8_t)
+62.  bool targetHotEnoughToExtrude(uint8_t)
+63.  void setTargetBed(celsius_t)
+64.  celsius_float_t degBed()
+65.  celsius_t wholeDegBed()
+66.  celsius_t degTargetBed()
+67.  bool isHeatingBed()
+68.  bool isCoolingBed()
+69.  bool degBedNear(celsius_t)
+70.  void start_watching_bed()
+71.  bool wait_for_bed(bool, bool)
+72.  void wait_for_bed_heating()
+73.  void manage_heated_bed(const millis_t&)
+74.  void set_fan_speed(uint8_t, uint16_t)
+75.  void report_fan_speed(uint8_t)
+76.  void set_fans_paused(bool)
+77.  void zero_fan_speeds()
+78.  uint8_t scaledFanSpeed(uint8_t)
+79.  uint8_t scaledFanSpeed(uint8_t, uint8_t)
+80.  uint8_t fanSpeedPercent(uint8_t)
+81.  uint8_t scaledFanSpeedPercent(uint8_t)
+82.  void set_temp_fan_speed(uint8_t, uint16_t)
+83.  void set_menu_cold_override(bool)
+84.  void singlenozzle_change(uint8_t, uint8_t)
+85.  void reset_hotend_idle_timer(uint8_t)
+86.  void reset_bed_idle_timer()
+87.  void set_heating_message(uint8_t, bool)
+88.  void lcd_preheat(uint8_t, int8_t, int8_t)
+89.  void PID_autotune(celsius_t, heater_id_t, int8_t, bool)
+90.  void updatePID()
+91.  void pause_heaters(bool)
+92.  void print_heater_states(int8_t, bool)
+93.  void start_preheat_time(uint8_t)
+94.  void reset_preheat_time(uint8_t)
+95.  bool is_preheating(uint8_t)
+96.  void update_autofans()
+
+Métodos privados (static)
+-------------------------
+97.  void update_raw_temperatures()
+98.  void updateTemperaturesFromRawValues()
+99.  bool updateTemperaturesIfReady()
+100. float get_pid_output_hotend(uint8_t)
+101. float get_pid_output_bed()
+102. void _temp_error(heater_id_t, FSTR_P, FSTR_P)
+103. void min_temp_error(heater_id_t)
+104. void max_temp_error(heater_id_t)
+
+
+
+PLANNER.H
+
+@startuml
+class Planner {
+
+  ' ======= Atributos Estáticos =======
+  +static block_t block_buffer[BLOCK_BUFFER_SIZE]
+  +static uint8_t block_buffer_head
+  +static uint8_t block_buffer_nonbusy
+  +static uint8_t block_buffer_planned
+  +static uint8_t block_buffer_tail
+  +static uint16_t cleaning_buffer_counter
+  +static uint8_t delay_before_delivering
+
+  +static planner_settings_t settings
+  +static float mm_per_step[DISTINCT_AXES]
+  +static uint32_t max_acceleration_steps_per_s2[DISTINCT_AXES]
+
+  +static xyze_long_t position
+  +static skew_factor_t skew_factor
+
+  +static bool leveling_active
+  +static matrix_3x3 bed_level_matrix
+  +static float z_fade_height
+  +static float inverse_z_fade_height
+
+  +static float junction_deviation_mm
+  +static xyze_pos_t position_cart
+  +static xyze_pos_t position_float
+
+  ' ======= Métodos Públicos =======
+  +Planner()
+  +void init()
+  +static void refresh_acceleration_rates()
+  +static void refresh_positioning()
+  +static void set_max_acceleration(AxisEnum, float)
+  +static void set_max_feedrate(AxisEnum, float)
+  +static void set_max_jerk(AxisEnum, float)
+  +static void set_flow(uint8_t, int16_t)
+  +static void check_axes_activity()
+  +static void sync_fan_speeds(uint8_t[])
+  +static void kickstart_fan(uint8_t[], millis_t, uint8_t)
+
+  +static bool _buffer_steps(xyze_long_t, feedRate_t, uint8_t, PlannerHints)
+  +static bool _populate_block(block_t*, xyze_long_t, feedRate_t, uint8_t, PlannerHints)
+  +static void buffer_sync_block(BlockFlagBit)
+  +static bool buffer_segment(abce_pos_t, feedRate_t, uint8_t, PlannerHints)
+  +static bool buffer_line(xyze_pos_t, feedRate_t, uint8_t, PlannerHints)
+  +static void set_position_mm(xyze_pos_t)
+  +static void set_machine_position_mm(abce_pos_t)
+  +static float get_axis_position_mm(AxisEnum)
+  +static void quick_stop()
+  +static void synchronize()
+  +static void finish_and_disable()
+  +static bool has_blocks_queued()
+  +static block_t* get_current_block()
+  +static void release_current_block()
+
+  +static uint8_t movesplanned()
+  +static uint8_t nonbusy_movesplanned()
+  +static bool is_full()
+  +static uint8_t moves_free()
+  +static void clear_block_buffer()
+
+  +static void recalculate()
+  +static void apply_leveling(xyz_pos_t&)
+  +static void unapply_leveling(xyz_pos_t&)
+  +static void apply_modifiers(xyze_pos_t&, bool)
+  +static void unapply_modifiers(xyze_pos_t&, bool)
+  +static void isr()
+
+  +static void set_z_fade_height(float)
+  +static float fade_scaling_factor_for_z(float)
+
+  +static void set_filament_size(uint8_t, float)
+  +static void calculate_volumetric_multipliers()
+  +static void calculate_volumetric_extruder_limit(uint8_t)
+  +static void calculate_volumetric_extruder_limits()
+  +static void set_volumetric_extruder_limit(uint8_t, float)
+
+  +static void apply_retract(float&, float&)
+  +static void unapply_retract(float&, float&)
+}
+
+@enduml
+
+
+GCODE.H
+
+@startuml
+class GcodeSuite {
+
+  ' ======= Atributos Estáticos =======
+  +static axis_bits_t axis_relative
+  +static millis_t previous_move_ms
+  +static millis_t max_inactive_time
+  +static millis_t stepper_inactive_time
+  +static bool autoreport_paused
+  +static MarlinBusyState busy_state
+  +static uint8_t host_keepalive_interval
+
+  ' ======= Métodos Públicos =======
+  +static bool axis_is_relative(AxisEnum)
+  +static void set_relative_mode(bool)
+  +static void set_e_relative()
+  +static void set_e_absolute()
+  +static void report_echo_start(bool)
+  +static void report_heading(bool, FSTR_P, bool)
+  +static void report_heading_etc(bool, FSTR_P, bool)
+  +static void say_units()
+  +static int8_t get_target_extruder_from_command()
+  +static int8_t get_target_e_stepper_from_command(int8_t)
+  +static void get_destination_from_command()
+  +static void process_parsed_command(bool)
+  +static void process_next_command()
+  +static void process_subcommands_now(FSTR_P)
+  +static void process_subcommands_now(char*)
+  +static void home_all_axes(bool)
+  +static bool stepper_max_timed_out(millis_t)
+  +static void reset_stepper_timeout(millis_t)
+  +static bool stepper_inactive_timeout(millis_t)
+  +static bool set_autoreport_paused(bool)
+  +static void host_keepalive()
+  +static bool host_keepalive_is_paused()
+  +static void dwell(millis_t)
+
+  ' ======= Métodos Privados Principais (com G / M códigos) =======
+  -static void G0_G1(bool)
+  -static void G2_G3(bool)
+  -static void G4()
+  -static void G28()
+  -static void G29()
+  -static void G30()
+  -static void G38(int8_t)
+  -static void G92()
+  -static void M17()
+  -static void M18_M84()
+  -static void M104()
+  -static void M105()
+  -static void M106()
+  -static void M107()
+  -static void M109()
+  -static void M140()
+  -static void M190()
+  -static void M221()
+  -static void M500()
+  -static void M501()
+  -static void M502()
+  -static void M503()
+  -static void M999()
+  -static void T(int8_t)
+
+  ' (Diversos outros métodos Gxx / Mxx omitidos por brevidade)
+}
+
+@enduml
+
+
+MARLINUI.H
+
+@startuml
+class MarlinUI {
+
+  ' ======= Atributos Estáticos =======
+  +static bool lcd_clicked
+  +static bool screen_changed
+  +static bool selection
+  +static uint8_t brightness
+  +static bool backlight
+  +static uint16_t lcd_backlight_timeout
+  +static millis_t backlight_off_ms
+  +static screenFunc_t currentScreen
+  +static ManualMove manual_move
+  +static char status_message[]
+  +static uint8_t alert_level
+
+  ' ======= Métodos Públicos =======
+  +MarlinUI()
+  +static void init()
+  +static void init_lcd()
+  +static void reinit_lcd()
+  +static bool detected()
+  +static void chirp()
+  +static void update()
+  +static void abort_print()
+  +static void pause_print()
+  +static void resume_print()
+  +static void flow_fault()
+  +static void clear_lcd()
+  +static void refresh()
+  +static void reset_status(bool)
+  +static void set_status(const char*, bool)
+  +static void set_status(FSTR_P, int8_t)
+  +static void set_alert_status(FSTR_P)
+  +static void reset_alert_level()
+  +static void set_status_reset_fn(statusResetFunc_t)
+  +static bool has_status()
+  +static uint8_t get_progress_percent()
+  +static void return_to_status()
+  +static void goto_screen(screenFunc_t, uint16_t, uint8_t, uint8_t)
+  +static void goto_previous_screen()
+  +static void go_back()
+  +static void quick_feedback(bool)
+  +static void completion_feedback(bool)
+  +static void update_buttons()
+  +static bool button_pressed()
+  +static void draw_kill_screen()
+  +static void kill_screen(FSTR_P, FSTR_P)
+  +static void refresh_brightness()
+  +static void refresh_backlight_timeout()
+  +static void sleep_on()
+  +static void sleep_off()
+
+  ' ======= Métodos Auxiliares LCD/Menu =======
+  +static bool should_draw()
+  +static void refresh(LCDViewAction)
+  +static void set_brightness(uint8_t)
+  +static void push_current_screen()
+  +static void defer_status_screen(bool)
+  +static void goto_previous_screen_no_defer()
+  +static void run_current_screen()
+  +static bool on_status_screen()
+  +static void draw_status_message(bool)
+  +static void draw_status_screen()
+  +static void draw_custom_bootscreen(uint8_t)
+  +static void show_custom_bootscreen()
+  +static void show_marlin_bootscreen()
+  +static void show_bootscreen()
+
+  ' ======= Preheat e EEPROM =======
+  +static void preheat_hotend(uint8_t, uint8_t)
+  +static void preheat_bed(uint8_t)
+  +static void preheat_all(uint8_t)
+  +static void apply_preheat(uint8_t, uint8_t, uint8_t)
+  +static void reset_settings()
+  +static void load_settings()
+  +static void store_settings()
+
+}
+@enduml
+
+
+settings.h
+
+@startuml
+class MarlinSettings {
+
+  ' ======= Métodos Públicos =======
+  +static uint16_t datasize()
+  +static void reset()
+  +static bool save()
+  +static bool init_eeprom()
+  +static bool load()
+  +static void first_load()
+  +static void report(bool forReplay=false)
+
+  ' ----- SD Firmware Update (condicional) -----
+  +static bool sd_update_status()
+  +static bool set_sd_update_status(bool enable)
+
+  ' ----- UBL Mesh Management (condicional) -----
+  +static uint16_t meshes_start_index()
+  +static uint16_t meshes_end_index()
+  +static uint16_t calc_num_meshes()
+  +static int mesh_slot_offset(int8_t slot)
+  +static void store_mesh(int8_t slot)
+  +static void load_mesh(int8_t slot, void* into=nullptr)
+
+  ' ======= Métodos Privados =======
+  -static void postprocess()
+  -static bool _load()
+  -static bool size_error(uint16_t size)
+  -static bool EEPROM_START(int eeprom_offset)
+  -static void EEPROM_FINISH()
+
+  -template <typename T> static void EEPROM_SKIP(const T &VAR)
+  -template <typename T> static void EEPROM_WRITE(const T &VAR)
+  -template <typename T> static void EEPROM_READ(T &VAR)
+  -static void EEPROM_READ(uint8_t *VAR, size_t sizeof_VAR)
+  -template <typename T> static void EEPROM_READ_ALWAYS(T &VAR)
+
+  ' ======= Atributos Estáticos Privados =======
+  -static bool eeprom_error
+  -static bool validating
+  -static int eeprom_index
+  -static uint16_t working_crc
+  -static const uint16_t meshes_end
+}
+
+@enduml
+

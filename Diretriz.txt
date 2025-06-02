@@ -1,0 +1,531 @@
+o Marlin já possui suporte para I2C de forma nativa, e o ADS1115 usa esse protocolo para comunicação. Então, a integração será mais direta.
+
+A seguir, vou ajustar o tutorial com base no uso do **I2C** para o **ADS1115** na **Octopus 1.1**.
+
+---
+
+## **1. Arquivos de Interesse no Marlin para I2C**
+
+A estrutura do Marlin já tem suporte nativo para I2C, então você apenas precisa configurar os pinos corretos e ajustar a leitura do ADS1115. Aqui estão os arquivos que você deve explorar:
+
+### **1.1. Arquivos de Configuração de Pinos**
+- **Arquivo**: `pins_BTT_OCTOPUS_V1_1.h`
+  - Localização: `Marlin/src/pins/stm32/`
+  - Aqui você configura os pinos que serão utilizados para o I2C (SCL e SDA) se ainda não estiverem configurados.
+  - Se os pinos para I2C não estiverem configurados, você precisará definir os pinos correspondentes ao **SCL** (Clock) e **SDA** (Dados) para o **ADS1115**.
+
+### **1.2. Abstração de Hardware (HAL)**
+- **Arquivo**: `HAL_STM32/`  
+  - Localização: `Marlin/src/HAL/HAL_STM32/`
+  - O STM32 já possui uma implementação para I2C, então você usará funções já existentes aqui para configurar e ler os dados do ADS1115 via I2C.
+  - A comunicação com I2C é gerenciada pelo **STM32 HAL**, então você apenas precisa configurar corretamente o barramento I2C para comunicar com o sensor.
+
+### **1.3. Leitura de Sensores (Temperatura)**
+- **Arquivo**: `temperature.cpp`
+  - Localização: `Marlin/src/`
+  - Esse arquivo trata de todos os sensores de temperatura.
+  - Para integrar o **ADS1115**, você precisará adicionar a lógica de leitura da porta I2C no Marlin.
+  - Esse arquivo vai ajudar a entender como o Marlin lê os sensores e como você pode adaptar para ler o valor do ADS1115.
+
+### **1.4. Comunicação Serial**
+- **Arquivo**: `serial.cpp`
+  - Localização: `Marlin/src/`
+  - Se você precisar de logs ou informações de depuração durante a comunicação I2C, pode utilizar esse arquivo.
+
+---
+
+## **2. Etapas para Configuração e Integração do ADS1115**
+
+Aqui está o passo a passo para integrar o **ADS1115** via **I2C** com o Marlin na sua placa **Octopus 1.1**:
+
+### **2.1. Configuração do I2C**
+O primeiro passo é garantir que a comunicação I2C esteja configurada corretamente no Marlin. O STM32F4 da sua Octopus 1.1 já tem suporte para I2C, então é só configurar os pinos e iniciar a comunicação.
+
+1. **Defina os pinos I2C no arquivo `pins_BTT_OCTOPUS_V1_1.h`**:
+   - Verifique se os pinos **SCL** e **SDA** estão corretamente configurados para o seu hardware. Por exemplo:
+
+   ```cpp
+   #define SDA_PIN  4  // Pino SDA
+   #define SCL_PIN  5  // Pino SCL
+   ```
+
+2. **Configure o I2C no `Marlin/src/HAL/HAL_STM32/`**:
+   - O STM32 já usa a biblioteca HAL para inicializar e gerenciar a comunicação I2C, então você só precisa certificar-se de que a configuração no código está habilitada para o I2C.
+   - **Funções Importantes**: `HAL_I2C_Master_Transmit()`, `HAL_I2C_Master_Receive()`.
+
+### **2.2. Inicializar o ADS1115**
+O ADS1115 se comunica via I2C, portanto, você pode usar funções do STM32 HAL para enviar e receber dados.
+
+- **Configuração Inicial do ADS1115**:
+  - Defina o endereço I2C do ADS1115 (geralmente **0x48**).
+  - Configure o ADS1115 para o modo de operação desejado (entrada diferencial ou single-ended).
+  - O **ADS1115** permite a configuração de múltiplos canais (de A0 a A3), então, dependendo do número de entradas que você deseja monitorar, será necessário configurar os canais corretamente.
+
+Aqui está um exemplo básico de inicialização e leitura do ADS1115:
+
+```cpp
+#define ADS1115_ADDR 0x48  // Endereço I2C do ADS1115
+
+// Função para configurar o ADS1115
+void initADS1115() {
+    uint8_t config[3] = { 0x01, 0xC3, 0x83 };  // Configuração para uma leitura diferencial no canal A0-A1
+    HAL_I2C_Master_Transmit(&hi2c1, ADS1115_ADDR << 1, config, 3, 1000);
+}
+
+// Função para ler o valor do ADS1115
+int16_t readADS1115() {
+    uint8_t data[2];
+    HAL_I2C_Master_Receive(&hi2c1, ADS1115_ADDR << 1, data, 2, 1000);
+    int16_t result = (data[0] << 8) | data[1];  // Combina os dois bytes de dados
+    return result;
+}
+```
+
+### **2.3. Adicionar Leitura no Marlin**
+Agora que você tem a leitura do ADS1115 configurada, o próximo passo é integrar isso ao Marlin.
+
+1. **Modifique `temperature.cpp` para incluir a leitura do ADS1115**.
+   - Adicione um novo sensor que utiliza a função `readADS1115()` para obter os dados.
+   - Exemplo: Se você estiver lendo uma entrada analógica de temperatura, converta a leitura do ADS1115 para um valor de temperatura.
+
+2. **Configure o sensor no `Configuration.h`**:
+   - Defina o sensor como parte da configuração da impressora.
+
+   ```cpp
+   #define TEMP_SENSOR_0 -1  // Configuração para o sensor que você adicionou (ADS1115)
+   ```
+
+### **2.4. Teste e Depuração**
+- **Comunicação I2C**: Utilize a comunicação serial para testar se os valores estão sendo lidos corretamente.
+- **Verifique as leituras**: Imprima os valores lidos do ADS1115 para verificar se a leitura está dentro do esperado.
+
+---
+
+## **3. Recursos e Documentação**
+- **Datasheet do ADS1115**: [ADS1115 Datasheet](https://www.ti.com/lit/ds/symlink/ads1115.pdf)
+- **STM32 HAL I2C**: [STM32 HAL I2C Documentation](https://www.st.com/en/development-tools/stm32cubeide.html)
+- **Marlin Firmware**: [Marlin Firmware GitHub](https://github.com/MarlinFirmware/Marlin)
+
+---
+
+Esse é o processo básico para integrar o **ADS1115** via **I2C** no **Marlin** na sua **Octopus 1.1**. Caso queira mais detalhes sobre algum ponto ou exemplos de código adicionais, posso te ajudar com mais especificidades!
+
+
+
+from pathlib import Path
+
+plano_txt = """
+PLANO DE EXECUÇÃO – Marlin 3D com 4 Mesas Independentes via PCF8574 + ADS1115
+
+--------------------------------------------
+ETAPA 1 – Infraestrutura do PCF8574 + ADS1115
+--------------------------------------------
+1. **Driver PCF8574**  
+   - Criar `pcf8574.h` / `pcf8574.cpp`  
+   - Métodos: `begin()`, `writeBit(pin, state)`, `writeMask(mask)`  
+   - Cache de 8 bits do registrador  
+   - Usa `PCF8574_ADDRESS` e bits `BED0_PCF_BIT…BED3_PCF_BIT`
+
+2. **Driver ADS1115**  
+   - Criar `ads1115.h` / `ads1115.cpp` em `module/ADS1115`  
+   - Métodos: `begin()`, `readRaw(channel)`, `readVoltage(channel)`  
+   - Configurar PGA e data rate  
+   - Testar leituras brutas dos 4 canais no `setup()` via Serial
+
+3. **Defines em Configuration_adv.h**  
+   ```cpp
+   // Multi-Bed via PCF8574 + ADS1115
+   #define ENABLE_MULTI_HEATED_BEDS
+   #define USE_PCF8574_FOR_BED_OUTPUTS
+   #define PCF8574_ADDRESS    0x20
+   #define BED0_PCF_BIT       0
+   #define BED1_PCF_BIT       1
+   #define BED2_PCF_BIT       2
+   #define BED3_PCF_BIT       3
+   #define ADS1115_ADDRESS    0x48
+
+4. Defines em Configuration.h (sensores de cama)
+
+	// IDs para nova tabela de termistor customizado
+	#define TEMP_SENSOR_BED_0 3000
+	#define TEMP_SENSOR_BED_1 3000
+	#define TEMP_SENSOR_BED_2 3000
+	#define TEMP_SENSOR_BED_3 3000
+	// (Comentar ou remover o define TEMP_SENSOR_BED padrão, se existir)
+
+-------------------------------------------------------
+ETAPA 1B – Integração com Tabela de Conversão (Termistor)
+-------------------------------------------------------
+1. Criar nova tabela em thermistors.h:
+   - const temp_entry_t temptable_3000[] PROGMEM = { {ADC, °C}, ... }
+
+2. Definir em Configuration.h:
+   - #define TEMP_SENSOR_BED_0 3000
+   - idem para BED_1 a BED_3
+
+3. Adicionar TT_3000 em thermistors.h:
+   - #define TT_3000 { OV(3000), temptable_3000, COUNT(temptable_3000), 0 }
+
+4. Confirmar em temperature.cpp:
+   - analog_to_celsius_bed() usará corretamente o ID 3000
+
+----------------------------------------
+ETAPA 2 – Lógica de Temperatura Estendida
+----------------------------------------
+1. Modificar temperature.h:
+   - Criar vetor: bed_info_t temp_bed[4]
+   - Funções: degBed(uint8_t), setTargetBed(uint8_t)
+
+2. Modificar temperature.cpp:
+   - Lógica independente por cama
+   - Acionamento do PCF8574 para ligar/desligar
+   - Adicionar segurança e watchdog por cama
+
+----------------------------------
+ETAPA 3 – Integração com LCD/UI
+----------------------------------
+1. MarlinUI (LCD):
+   - Mostrar 4 camas no status
+   - Criar menu para controle individual
+   - Opção de pré-aquecer todas ou individualmente
+
+-------------------------------------
+ETAPA 4 – G-code (M140/M190/M105)
+-------------------------------------
+1. Estender M140/M190:
+   - P0 → todas as camas
+   - P1–P4 → individualmente
+
+2. M105:
+   - P0 → média das 4 camas
+   - P1–P4 → leitura individual
+
+----------------------------------------
+ETAPA 5 – Persistência com EEPROM
+----------------------------------------
+1. MarlinSettings:
+   - Salvar temp_bed[N].target
+   - Atualizar save(), load(), report()
+
+------------------------------------
+ETAPA 6 – SanityCheck e Configuração
+------------------------------------
+1. SanityCheck.h:
+   - Verificar TEMP_SENSOR_BED_0–3 válidos
+   - Checar conflitos com TEMP_SENSOR_BED padrão
+
+2. pins_BTT_OCTOPUS_V1_1.h:
+   - Remover uso direto de HEATER_BED_PIN se necessário
+
+-------------------------------
+ETAPA 7 – Testes Funcionais
+-------------------------------
+1. Teste básico I2C (PCF8574)
+2. Teste leitura ADS1115
+3. Verificar set/get temperatura por G-code
+4. Teste espera M190, desligamento, EEPROM
+5. Testes na interface LCD
+
+-----------------------------------------
+ETAPA FINAL – Documentação e Padronização
+-----------------------------------------
+1. Comentários nos blocos com #if MULTI_HEATED_BEDS
+2. Atualização de README
+3. Marcar áreas modificadas para futuro pull request
+"""
+
+path = Path("/mnt/data/plano_modificacao_4_camas.txt")
+path.write_text(plano_txt)
+path
+
+
+----------------------------------------------------------
+-------------------------------------------------------
+----------------------------------------------------------
+
+PLANO DE EXECUÇÃO – Marlin 3D com 4 Mesas Independentes via PCF8574 + ADS1115
+
+ETAPA 1 – INFRAESTRUTURA (sem tocar funções core ainda)
+
+Drivers I²C
+1.1. PCF8574: criar module/PCF8574/pcf8574.h e pcf8574.cpp (init, writeBit, writeMask, readPort, readPin, cache 8 bits).
+1.2. ADS1115: criar module/ADS1115/ads1115.h e ads1115.cpp (begin, readRaw, readVoltage, PGA, data rate).
+
+Flags de compilação
+2.1. Em Configuration_adv.h, adicionar:
+ENABLE_MULTI_HEATED_BEDS
+USE_PCF8574_FOR_BED_OUTPUTS
+PCF8574_ADDRESS 0x20
+BED0_PCF_BIT 0
+BED1_PCF_BIT 1
+BED2_PCF_BIT 2
+BED3_PCF_BIT 3
+ADS1115_ADDRESS 0x48
+MULTI_BED_COUNT 4
+2.2. Em Configuration.h, definir apenas IDs de termistor customizado:
+TEMP_SENSOR_BED 0
+TEMP_SENSOR_BED_0 3000
+TEMP_SENSOR_BED_1 3000
+TEMP_SENSOR_BED_2 3000
+TEMP_SENSOR_BED_3 3000
+
+Tabela de termistor customizado
+3.1. Criar thermistor_3000.h em src/module/thermistor com temptable_3000 e TT_3000.
+3.2. Em thermistors.h, após incluir thermistor_2000.h, adicionar:
+#if ANY_THERMISTOR_IS(3000)
+#include "thermistor/thermistor_3000.h"
+#endif
+
+Teste da curva
+4.1. Em MarlinCore.cpp, após SERIAL_ECHOLNPGM("start"), adicionar debug usando Serial.print:
+Serial.begin(BAUDRATE); delay(100);
+raw_adc_t test = OV(997);
+float t25 = Temperature::analog_to_celsius_bed(test);
+Serial.print("997 -> "); Serial.println(t25);
+4.2. Compilar, gravar e confirmar no monitor serial “997 -> 25.00 °C”.
+
+— quando 1 a 4 estiverem validados, seguir para ETAPA 2 —
+
+ETAPA 2 – REFACTORMULTI-BED (alterações em bloco)
+
+temperature.h
+1.1. Definir struct bed_info_t { raw_adc_t raw; celsius_t temp; celsius_t target; bool heating; }
+1.2. Declarar extern bed_info_t temp_bed[MULTI_BED_COUNT]
+1.3. Prototipar analog_to_celsius_bed(raw, uint8_t bed) e setTargetBed(bed, temp)
+
+temperature.cpp
+2.1. Implementar analog_to_celsius_bed(raw, bed), usando SCAN_THERMISTOR_TABLE(TEMPTABLE_BED, …) e UNUSED(bed) até refinar.
+2.2. Em updateTemperaturesFromRawValues(), substituir leitura única por loop i=0…MULTI_BED_COUNT–1:
+temp_bed[i].raw = map(readRaw(i), 0, 32767, 0, MAX_RAW);
+temp_bed[i].temp = analog_to_celsius_bed(temp_bed[i].raw, i);
+2.3. Garantir watchdog_refresh e preservação de outros sensores.
+
+Controle de aquecimento
+3.1. Dentro do laço de controle de temperatura (thermalManager), após cálculo:
+for i in 0…MULTI_BED_COUNT–1:
+needOn = temp_bed[i].temp < temp_bed[i].target
+if needOn != temp_bed[i].heating:
+bedExpander.writeBit(BED0_PCF_BIT+i, needOn)
+temp_bed[i].heating = needOn
+
+Limpeza de código legado
+4.1. Remover referências diretas a HEATER_BED_PIN em pins_*.h
+4.2. Atualizar SanityCheck.h para validar TEMP_SENSOR_BED_0–3 e MULTI_BED_COUNT
+
+ETAPA 3 – INTEGRAÇÃO COM LCD/UI
+
+Ajustar MarlinUI:
+1.1. Exibir status das 4 camas na tela inicial
+1.2. Criar menu “Cama 1..4” para setpoints individuais
+1.3. Opção “Pré-aquecer todas”
+
+ETAPA 4 – EXTENSÃO DE G-CODES
+
+M140/M190
+1.1. P0 → todas as camas
+1.2. P1–P4 → cama específica
+
+M105
+2.1. P0 → média das 4 camas
+2.2. P1–P4 → leitura individual
+
+ETAPA 5 – PERSISTÊNCIA EM EEPROM
+
+MarlinSettings
+1.1. Salvar temp_bed[i].target
+1.2. Atualizar settings.save/load/report
+
+ETAPA 6 – SANITYCHECK E CONFIGURAÇÃO
+
+SanityCheck.h
+1.1. Verificar IDs 0–3 válidos
+1.2. Conflitos com TEMP_SENSOR_BED
+
+pins_BTT_OCTOPUS_V1_1.h
+2.1. Remover HEATER_BED_PIN se ainda houver
+
+ETAPA 7 – TESTES FUNCIONAIS
+
+I²C básico (PCF8574)
+
+Leitura ADS1115 nos 4 canais
+
+Controlar e ler via G-code
+
+M190 espera e desligamento
+
+UI e menus
+
+ETAPA FINAL – DOCUMENTAÇÃO E PADRONIZAÇÃO
+
+Comentários #if ENABLE_MULTI_HEATED_BEDS
+
+Atualizar README
+
+Marcar diffs para pull request futuro
+ ---------------------- -
+------------------------
+---------------
+
+
+
+Funções e estruturas já alteradas (ETAPA 1 e começo da ETAPA 2)
+temperature.h
+
+struct bed_info_t { raw, celsius, target, heating }
+
+extern bed_info_t temp_bed[MULTI_BED_COUNT];
+
+static celsius_float_t analog_to_celsius_bed(raw_adc_t raw, uint8_t bed);
+
+static raw_adc_t readBedRaw(uint8_t bed);
+
+Getters/Setters multi-bed:
+
+degBed(bed), wholeDegBed(bed), degTargetBed(bed)
+
+isHeatingBed(bed), isCoolingBed(bed), degBedNear(bed,temp)
+
+start_watching_bed(bed), setTargetBed(bed,temp)
+
+wait_for_bed(bed,…), wait_for_bed_heating(bed), manage_heated_bed(bed,ms)
+
+Idle-timer multi-bed:
+
+enum IdleIndex { … IDLE_INDEX_BED0…IDLE_INDEX_BED3 … }
+
+static IdleIndex idle_index_for_id(int8_t heater_id);
+
+static void reset_bed_idle_timer(uint8_t bed);
+
+static heater_idle_t heater_idle[NR_HEATER_IDLE];
+
+Runaway-protection multi-bed:
+
+enum RunawayIndex { … RUNAWAY_IND_BED0…RUNAWAY_IND_BED3 … };
+
+static RunawayIndex runaway_index_for_id(int8_t heater_id);
+
+static tr_state_machine_t tr_state_machine[NR_HEATER_RUNAWAY];
+
+Arrays por cama:
+
+bed_watch_t watch_bed[MULTI_BED_COUNT];
+
+millis_t next_bed_check_ms[MULTI_BED_COUNT];
+
+raw_adc_t mintemp_raw_BED[MULTI_BED_COUNT], maxtemp_raw_BED[MULTI_BED_COUNT];
+
+temperature.cpp
+
+Implementação de readBedRaw(bed) que faz ADS1115.readRaw(bed) + map() → 10-bit
+
+Assinatura e corpo de analog_to_celsius_bed(raw, bed) (tabela 3000)
+
+Primeira versão de updateTemperaturesFromRawValues() com laço multi-bed
+
+Esqueleto de controlBedHeaters() (ainda pendente)
+
+
+Plano de Ação Atual
+ETAPA 1 – INFRAESTRUTURA (concluída)
+Driver PCF8574 (module/PCF8574/pcf8574.h/.cpp)
+
+Driver ADS1115 (module/ADS1115/ads1115.h/.cpp)
+
+Defines em Configuration_adv.h
+
+Thermistor custom (3000)
+
+thermistor_3000.h + inclusão em thermistors.h
+
+Teste de curva em MarlinCore.cpp via Serial.print(OV(997)→25 °C)
+
+ETAPA 2 – LÓGICA DE TEMPERATURA ESTENDIDA (em progresso)
+temperature.h
+
+Vetor temp_bed[4] e assinaturas multi-bed (feito)
+
+temperature.cpp
+
+readBedRaw(bed) (feito)
+
+analog_to_celsius_bed(raw, bed) (feito)
+
+updateTemperaturesFromRawValues() (esqueleto multi-bed pronto)
+
+controlBedHeaters() → comparar temp_bed[i].celsius vs target e chamar pcf8574.writeBit(BED0+ i, on) (pendente)
+
+Integração watchdog (watch_bed[i]) e runaway (tr_state_machine[...]) já parametrizados (feito)
+
+ETAPA 3 – INTEGRAÇÃO LCD/UI
+Mostrar 4 camas no status
+
+Menu de controle individual e “pré-aquecer todas”
+
+ETAPA 4 – G-CODES (M140/M190/M105)
+P0 → todas as camas
+
+P1–P4 → cama específica
+
+M105: média ou leitura individual
+
+ETAPA 5 – PERSISTÊNCIA EEPROM
+Salvar temp_bed[i].target
+
+settings.save/load/report
+
+ETAPA 6 – SANITYCHECK & PINS
+Validar TEMP_SENSOR_BED_0–3 e MULTI_BED_COUNT
+
+Remover HEATER_BED_PIN estático em pins_…h
+
+ETAPA 7 – TESTES FUNCIONAIS
+I²C básico (PCF8574, ADS1115)
+
+Leitura/controle 4 camas por G-Code
+
+Teste M190, desligamento, watchdog, runaway
+
+UI e menus
+
+ETAPA FINAL – DOCUMENTAÇÃO
+Comentários #if ENABLE_MULTI_HEATED_BEDS
+
+Atualizar README
+
+Preparar pull request
+
+
+
+********************************
+*******************************
+*********************************
+**********************************
+
+Sugiro a seguinte ordem para revisarmos cada arquivo, de modo a acompanhar a sequência lógica de configuração → declaração → implementação → integração:
+
+conditionals_adv.h
+Entender quais flags/macros habilitam o modo “multi‐bed” e como são definidas as condições de presença de ADC para camas e hotends.
+
+Configuration.h
+Verificar valores que disparam ENABLE_MULTI_HEATED_BEDS, endereços I²C (PCF8574/ADS1115) e limites brutos de termistor para cada cama.
+
+temperature.h
+Checar declarações de estruturas (bed_info_t, enums de estados ADC, wait_for_bed(), vetores temp_bed[]) que suportam as 4 mesas.
+
+temperature.cpp
+Conferir a lógica de leitura do ADS1115 (readBedRaw()), a coleta no ISR (ou rotina periódica) e a conversão raw→°C para cada cama.
+
+MarlinCore.cpp
+Revisar onde são feitas as chamadas tempSensor.begin(...) e bedExpander.begin(...) no setup, além de onde (ou como) deveria vir a inicialização das rotinas de temperatura.
+
+ads1115.h
+Analisar a interface do driver ADS1115 (métodos begin(), readRaw(), readVoltage()) para garantir que está de acordo com o uso em temperature.cpp.
+
+pcf8574.h
+Verificar se o driver PCF8574 oferece os métodos necessários (begin(), writeBit(), etc.) e como isso será usado para acionar os MOSFETs das camas.
+
+Depois de definirmos essa ordem, podemos abrir o primeiro arquivo (conditionals_adv.h), revisar ponto a ponto e seguir para o próximo.
+
+
