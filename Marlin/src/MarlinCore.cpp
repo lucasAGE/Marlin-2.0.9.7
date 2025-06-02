@@ -252,16 +252,19 @@
   #include "feature/easythreed_ui.h"
 #endif
 
-#include "module/pcf8574.h"
-#include "module/ads1115.h"
+      //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
 
-#if ENABLED(USE_PCF8574_FOR_BED_OUTPUTS)
-  static PCF8574 bedExpander;
-#endif
 
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-  static ADS1115 tempSensor;
+  #include <Wire.h>
+  #include "PCF8574.h"
+  #include "ADS1X15.h"
+  static ADS1115 tempSensor(0x48);
+  static PCF8574 bedExpander(0x20);
 #endif
+
 
 PGMSTR(M112_KILL_STR, "M112 Shutdown");
 
@@ -1159,7 +1162,16 @@ void setup() {
   millis_t serial_connect_timeout = millis() + 1000UL;
   while (!MYSERIAL1.connected() && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
 
-  tempSensor.begin(Wire, ADS1115_ADDRESS, ADS1115::GAIN_ONE, ADS1115::DR_128SPS);
+      //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
+
+     
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        tempSensor.begin(Wire, /*pga=*/1, /*dataRate=*/128);
+        bedExpander.begin(Wire);
+      #endif
+
 
   #if HAS_MULTI_SERIAL && !HAS_ETHERNET
     #ifndef BAUDRATE_2

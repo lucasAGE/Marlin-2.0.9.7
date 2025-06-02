@@ -475,6 +475,7 @@
  *    70 : 100kΩ  bq Hephestos 2
  *    75 : 100kΩ  Generic Silicon Heat Pad with NTC100K MGB18-104F39050L32
  *  2000 : 100kΩ  Ultimachine Rambo TDK NTCG104LH104KT1 NTC100K motherboard Thermistor
+ *  3000 : ADS1115 for I2C readings
  * 
  *   I2C / ADC externos
  *  -------
@@ -511,6 +512,7 @@
  *   999 : Dummy Table that ALWAYS reads 100°C or the temperature defined below.
  *
  */
+
 #define TEMP_SENSOR_0 1
 #define TEMP_SENSOR_1 0
 #define TEMP_SENSOR_2 0
@@ -519,18 +521,22 @@
 #define TEMP_SENSOR_5 0
 #define TEMP_SENSOR_6 0
 #define TEMP_SENSOR_7 0
-#define TEMP_SENSOR_BED      0
-#define TEMP_SENSOR_BED_0  3000
-#define TEMP_SENSOR_BED_1  3000
-#define TEMP_SENSOR_BED_2  3000
-#define TEMP_SENSOR_BED_3  3000
+
+      //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
+
+//====================================== Multi-Bed Settings ===========================================
+#define TEMP_SENSOR_BED 3000
+#define MULTI_BED_COUNT  4  // pode ser 1, 2, 3 ou 4
+#define PCF8574_ADDRESS   0x20
+#define ADS1115_ADDRESS   0x48
+
 #define TEMP_SENSOR_PROBE 0
 #define TEMP_SENSOR_CHAMBER 0
 #define TEMP_SENSOR_COOLER 0
 #define TEMP_SENSOR_BOARD 0
 #define TEMP_SENSOR_REDUNDANT 0
-
-
 
 
 // Dummy thermistor constant temperature readings, for use with 998 and 999

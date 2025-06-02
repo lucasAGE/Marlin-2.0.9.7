@@ -2430,9 +2430,33 @@
 #if HOTENDS > 7 && HAS_ADC_TEST(7)
   #define HAS_TEMP_ADC_7 1
 #endif
-#if HAS_ADC_TEST(BED)
-  #define HAS_TEMP_ADC_BED 1
+
+      //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
+
+// Se multi-bed estiver ativo, definimos 4 canais ADC distintos para as camas
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  #if MULTI_BED_COUNT > 0
+    #define HAS_TEMP_ADC_BED0 1
+  #endif
+  #if MULTI_BED_COUNT > 1
+    #define HAS_TEMP_ADC_BED1 1
+  #endif
+  #if MULTI_BED_COUNT > 2
+    #define HAS_TEMP_ADC_BED2 1
+  #endif
+  #if MULTI_BED_COUNT > 3
+    #define HAS_TEMP_ADC_BED3 1
+  #endif
+#else
+  // Se não for multi-bed, mantemos a definição antiga (Cama única via pino analógico)
+  #if HAS_ADC_TEST(BED)
+    #define HAS_TEMP_ADC_BED 1
+  #endif
 #endif
+
+
 #if HAS_ADC_TEST(PROBE)
   #define HAS_TEMP_ADC_PROBE 1
 #endif
@@ -2471,6 +2495,16 @@
 #if HAS_TEMP(REDUNDANT)
   #define HAS_TEMP_REDUNDANT 1
 #endif
+
+      //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
+
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      #if MULTI_BED_COUNT > 0
+        #define HAS_TEMP_BED 1
+      #endif
+    #endif
 
 #if ENABLED(JOYSTICK)
   #if PIN_EXISTS(JOY_X)

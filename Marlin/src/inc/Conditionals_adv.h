@@ -122,7 +122,36 @@
 #define HID_COOLER    -4
 #define HID_PROBE     -3
 #define HID_CHAMBER   -2
-#define HID_BED       -1
+
+      //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
+
+#if TEMP_SENSOR_BED == 3000
+  #define ENABLE_MULTI_HEATED_BEDS
+  #define HAS_TEMP_ADC_BED0 1
+  #define HAS_TEMP_ADC_BED1 1
+  #define HAS_TEMP_ADC_BED2 1
+  #define HAS_TEMP_ADC_BED3 1
+  #else
+  #undef HAS_TEMP_ADC_BED0
+  #undef HAS_TEMP_ADC_BED1
+  #undef HAS_TEMP_ADC_BED2
+  #undef HAS_TEMP_ADC_BED3
+#endif
+
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+
+  #define HID_BED0     -21
+  #define HID_BED1     -22
+  #define HID_BED2     -23
+  #define HID_BED3     -24
+  #define HID_BED      HID_BED0  // Para manter compatibilidade com código legado
+#else
+  #define HID_BED      -1
+#endif
+
+
 #define HID_E0         0
 #define HID_E1         1
 #define HID_E2         2
@@ -441,8 +470,17 @@
   #error "MAX6675 Thermocouples (-2) not supported for TEMP_SENSOR_BED."
 #elif TEMP_SENSOR_BED == -1
   #define TEMP_SENSOR_BED_IS_AD595 1
+
+      //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
+
+#elif TEMP_SENSOR_BED == 3000
+  #define TEMP_SENSOR_BED_IS_ADC16 1
+
 #elif TEMP_SENSOR_BED > 0
   #define TEMP_SENSOR_BED_IS_THERMISTOR 1
+   #define HAS_TEMP_ADC_BED 1
   #if TEMP_SENSOR_BED == 1000
     #define TEMP_SENSOR_BED_IS_CUSTOM 1
   #elif TEMP_SENSOR_BED == 998 || TEMP_SENSOR_BED == 999
@@ -454,6 +492,7 @@
   #undef BED_MINTEMP
   #undef BED_MAXTEMP
 #endif
+
 
 #if TEMP_SENSOR_CHAMBER == -4
   #define TEMP_SENSOR_CHAMBER_IS_AD8495 1

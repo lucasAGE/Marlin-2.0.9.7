@@ -61,18 +61,19 @@ typedef enum : int8_t {
   H_CHAMBER   = HID_CHAMBER,
 
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    H_BED0  = HID_BED,  // alias para cama 0 (legacy H_BED)
-    H_BED1,             // HID_BED + 1
-    H_BED2,             // HID_BED + 2
-    H_BED3,             // HID_BED + 3
-    H_BED   = H_BED0,   // mantém H_BED como sinônimo de cama 0
+    H_BED0 = HID_BED0,  // cama 1
+    H_BED1 = HID_BED1,  // cama 2
+    H_BED2 = HID_BED2,  // cama 3
+    H_BED3 = HID_BED3,  // cama 4
+    H_BED  = H_BED0,    // alias legado para cama 1
   #else
-    H_BED   = HID_BED,
+    H_BED  = HID_BED,
   #endif
 
-    H_E0 = HID_E0, H_E1, H_E2, H_E3, H_E4, H_E5, H_E6, H_E7,
-    H_NONE = -128
+  H_E0 = HID_E0, H_E1, H_E2, H_E3, H_E4, H_E5, H_E6, H_E7,
+  H_NONE = -128
 } heater_id_t;
+
 
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
   static bool wait_for_bed(const uint8_t bed,
@@ -134,14 +135,35 @@ hotend_pid_t;
 /**
  * States for ADC reading in the ISR
  */
-enum ADCSensorState : char {
+     //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
+
+  enum ADCSensorState : char {
   StartSampling,
   #if HAS_TEMP_ADC_0
     PrepareTemp_0, MeasureTemp_0,
   #endif
-  #if HAS_TEMP_ADC_BED
-    PrepareTemp_BED, MeasureTemp_BED,
-  #endif
+
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    #if HAS_TEMP_ADC_BED0
+        PrepareTemp_BED0, MeasureTemp_BED0,
+      #endif
+      #if HAS_TEMP_ADC_BED1
+        PrepareTemp_BED1, MeasureTemp_BED1,
+      #endif
+      #if HAS_TEMP_ADC_BED2
+        PrepareTemp_BED2, MeasureTemp_BED2,
+      #endif
+      #if HAS_TEMP_ADC_BED3
+        PrepareTemp_BED3, MeasureTemp_BED3,
+      #endif
+    #else
+      #if HAS_TEMP_ADC_BED
+        PrepareTemp_BED, MeasureTemp_BED,
+      #endif
+    #endif
+
   #if HAS_TEMP_ADC_CHAMBER
     PrepareTemp_CHAMBER, MeasureTemp_CHAMBER,
   #endif
@@ -422,8 +444,12 @@ class Temperature {
     //########################          TCC LUCAS          ################################################
     //#####################################################################################################
     #if HAS_HEATED_BED
-      // Vetor de informações de cada cama (0…MULTI_BED_COUNT-1)
-     static bed_info_t temp_bed[MULTI_BED_COUNT];
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        static bed_info_t temp_bed[MULTI_BED_COUNT];
+      #else
+        static bed_info_t temp_bed;
+      #endif
+    #endif
 
      
     #endif
@@ -496,7 +522,7 @@ class Temperature {
 
 
 
-       #if HEATER_IDLE_HANDLER
+    #if HEATER_IDLE_HANDLER
 
     // Heater idle handling. Marlin cria um por hotend e um por cama (ou várias, se multi‐bed).
     typedef struct {
@@ -551,13 +577,14 @@ class Temperature {
      */
     static IdleIndex idle_index_for_id(const int8_t heater_id) {
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-        // camas 0…MULTI_BED_COUNT-1, começando em H_BED
-        if (heater_id >= H_BED && heater_id < H_BED + MULTI_BED_COUNT) {
-          return IdleIndex(IDLE_INDEX_BED0 + (heater_id - H_BED));
-        }
+        if (heater_id >= H_BED && heater_id < H_BED + MULTI_BED_COUNT)
+          return (IdleIndex)(IDLE_INDEX_BED0 + (heater_id - H_BED));
       #elif HAS_HEATED_BED
         if (heater_id == H_BED) return IDLE_INDEX_BED;
       #endif
+  // Resto do mapeamento
+}
+
       // Hotends e redundantes seguem o padrão original (E0…En)
       return (IdleIndex)_MAX(heater_id, 0);
     }
@@ -727,20 +754,15 @@ class Temperature {
     //#####################################################################################################
 
     #if HAS_HEATED_BED
-      /**
-       * Converte raw ADC em °C para a cama `bed` (0…MULTI_BED_COUNT-1).
-       */
-      static celsius_float_t analog_to_celsius_bed(const raw_adc_t raw, const uint8_t bed);
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        static celsius_float_t analog_to_celsius_bed(const raw_adc_t raw, const uint8_t bed);
+        static raw_adc_t           readBedRaw(const uint8_t bed);
+      #else
+        static celsius_float_t analog_to_celsius_bed(const raw_adc_t raw);
+        // não há readBedRaw() no single-bed
+      #endif
     #endif
 
-
-    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    /**
-    * Lê o valor bruto do ADS1115 para a cama `bed`,
-    * escalona de 16-bit → 10-bit e retorna raw_adc_t.
-    */
-    static raw_adc_t readBedRaw(const uint8_t bed);
-    #endif
 
     #if HAS_TEMP_CHAMBER
       static celsius_float_t analog_to_celsius_chamber(const raw_adc_t raw);
@@ -1322,13 +1344,16 @@ class Temperature {
         #endif
 
         // Beds: RUNAWAY_IND_BED0…BED3 (ou só BED se single-bed)
-        #if ENABLED(THERMAL_PROTECTION_BED) && ENABLED(ENABLE_MULTI_HEATED_BEDS)
-          #define _RUNAWAY_IND_B(N) , RUNAWAY_IND_BED##N
-          REPEAT(MULTI_BED_COUNT, _RUNAWAY_IND_B)
-          #undef _RUNAWAY_IND_B
-        #elif ENABLED(THERMAL_PROTECTION_BED)
-          , RUNAWAY_IND_BED
+        #if ENABLED(THERMAL_PROTECTION_BED)
+          #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+            #define _RUNAWAY_IND_B(N) , RUNAWAY_IND_BED##N
+            REPEAT(MULTI_BED_COUNT, _RUNAWAY_IND_B)
+            #undef _RUNAWAY_IND_B
+          #else
+            , RUNAWAY_IND_BED
+          #endif
         #endif
+
 
         // Chamber, Cooler…
         OPTARG(THERMAL_PROTECTION_CHAMBER, RUNAWAY_IND_CHAMBER)
@@ -1351,13 +1376,12 @@ class Temperature {
          //########################          TCC LUCAS          ################################################
          //#####################################################################################################
 
-        #if ENABLED(THERMAL_PROTECTION_BED) && ENABLED(ENABLE_MULTI_HEATED_BEDS)
-          if (heater_id >= H_BED && heater_id < H_BED + MULTI_BED_COUNT)
-            return RunawayIndex(RUNAWAY_IND_BED0 + (heater_id - H_BED));
-        #elif ENABLED(THERMAL_PROTECTION_BED)
-          if (heater_id == H_BED) return RUNAWAY_IND_BED;
-        #endif
-
+         #if ENABLED(THERMAL_PROTECTION_BED) && ENABLED(ENABLE_MULTI_HEATED_BEDS)
+            if (heater_id >= H_BED0 && heater_id < H_BED0 + MULTI_BED_COUNT)
+              return (RunawayIndex)(RUNAWAY_IND_BED0 + (heater_id - H_BED0));
+          #elif ENABLED(THERMAL_PROTECTION_BED)
+            if (heater_id == H_BED) return RUNAWAY_IND_BED;
+          #endif
         #if ENABLED(THERMAL_PROTECTION_CHAMBER)
           if (heater_id == H_CHAMBER) return RUNAWAY_IND_CHAMBER;
         #endif
@@ -1392,6 +1416,7 @@ class Temperature {
       static tr_state_machine_t tr_state_machine[NR_HEATER_RUNAWAY];
 
     #endif // HAS_THERMAL_PROTECTION
+  };
 
 
 extern Temperature thermalManager;

@@ -4352,20 +4352,3 @@
 
 // Report uncleaned reset reason from register r2 instead of MCUSR. Supported by Optiboot on AVR.
 //#define OPTIBOOT_RESET_REASON
-
-
-//================================ Multi-Bed Settings ================================
-#define ENABLE_MULTI_HEATED_BEDS
-#define MULTI_BED_COUNT  4  // pode ser 1, 2, 3 ou 4
-
-#define USE_PCF8574_FOR_BED_OUTPUTS
-#define PCF8574_ADDRESS   0x20
-
-#define BED0_PCF_BIT      0
-#define BED1_PCF_BIT      1
-#define BED2_PCF_BIT      2
-#define BED3_PCF_BIT      3
-
-#define ADS1115_ADDRESS   0x48
-//==================================================================================
-

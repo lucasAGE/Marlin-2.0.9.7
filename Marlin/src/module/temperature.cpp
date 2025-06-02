@@ -344,6 +344,17 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
   const celsius_t Temperature::hotend_maxtemp[HOTENDS] = ARRAY_BY_HOTENDS(HEATER_0_MAXTEMP, HEATER_1_MAXTEMP, HEATER_2_MAXTEMP, HEATER_3_MAXTEMP, HEATER_4_MAXTEMP, HEATER_5_MAXTEMP, HEATER_6_MAXTEMP, HEATER_7_MAXTEMP);
 #endif
 
+#if HAS_HEATED_BED
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    // Define o array de informações de cada cama (bed_info_t é definido em temperature.h)
+    bed_info_t Temperature::temp_bed[MULTI_BED_COUNT] = {};
+  #else
+    // Se só houver cama única:
+    bed_info_t Temperature::temp_bed = {};
+  #endif
+#endif
+
+
 #if HAS_TEMP_REDUNDANT
   redundant_info_t Temperature::temp_redundant;
 #endif
@@ -2293,9 +2304,28 @@ void Temperature::task() {
      * Fallback single-bed: chama a versão multi-bed com bed=0
      */
     celsius_float_t Temperature::analog_to_celsius_bed(const raw_adc_t raw) {
-      return Temperature::analog_to_celsius_bed(raw, /*bed=*/0);
-    }
-  #endif
+    #if TEMP_SENSOR_BED_IS_CUSTOM
+      return user_thermistor_to_deg_c(CTI_BED, raw);
+    #elif TEMP_SENSOR_IS_MAX_TC(BED)
+      #if TEMP_SENSOR_BED_IS_MAX31865
+        return TERN(LIB_INTERNAL_MAX31865,
+          max31865_BED.temperature(raw),
+          max31865_BED.temperature(MAX31865_SENSOR_OHMS_BED, MAX31865_CALIBRATION_OHMS_BED)
+        );
+      #else
+        return (int16_t)raw * 0.25f;
+      #endif
+    #elif TEMP_SENSOR_BED_IS_THERMISTOR
+      SCAN_THERMISTOR_TABLE(TEMPTABLE_BED, TEMPTABLE_BED_LEN);
+    #elif TEMP_SENSOR_BED_IS_AD595
+      return temp_ad595(raw);
+    #elif TEMP_SENSOR_BED_IS_AD8495
+      return temp_ad8495(raw);
+    #else
+      UNUSED(raw);
+      return 0;
+    #endif
+  }
 
 #endif // HAS_HEATED_BED
 
@@ -2673,8 +2703,6 @@ void Temperature::init() {
       OUT_WRITE(HEATER_BED_PIN, HEATER_BED_INVERTING);
     #endif
   #endif  // USE_PCF8574_FOR_BED_OUTPUTS
-
-  #endif  // HAS_HEATED_BED
 
 
   #if HAS_HEATED_CHAMBER
@@ -3073,23 +3101,24 @@ void Temperature::disable_all_heaters() {
     //#####################################################################################################
 
   #if HAS_HEATED_BED
-    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-      // Desliga todas as 4 camas
-      for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
-        setTargetBed(b, 0);
-        temp_bed[b].heating          = false;
-        temp_bed[b].soft_pwm_amount  = 0;
-        // Garanta que o PCF8574 desligue o MOSFET
-        bedExpander.writeBit(BED0_PCF_BIT + b, false);
-      }
-    #else
-      // Single-bed
-      setTargetBed(0, 0);
-      temp_bed.heating         = false;
-      temp_bed.soft_pwm_amount = 0;
-      WRITE_HEATER_BED(LOW);
-    #endif
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    // Desliga todas as 4 camas
+    for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
+      // Primeiro parâmetro é a temperatura (0 = desligar), segundo é o índice da cama
+      setTargetBed(0, b);
+      temp_bed[b].heating         = false;
+      temp_bed[b].soft_pwm_amount = 0;
+      // Garanta que o PCF8574 desligue o MOSFET
+      bedExpander.writeBit(BED0_PCF_BIT + b, false);
+    }
+  #else
+    // Single‐bed: seta target 0 para a única cama (índice 0)
+    setTargetBed(0, 0);
+    temp_bed.heating         = false;
+    temp_bed.soft_pwm_amount = 0;
+    WRITE_HEATER_BED(LOW);
   #endif
+#endif
 
   #if HAS_HEATED_CHAMBER
     setTargetChamber(0);
