@@ -39,18 +39,17 @@
     //#####################################################################################################
     //########################          TCC LUCAS          ################################################
     //#####################################################################################################
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  #include "ADS1X15.h"
+  extern ADS1115 tempSensor;  // instância criada em MarlinCore.cpp
 
-    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-      #include "ads1115.h"
-      extern ADS1115 tempSensor;  // instância criada em MarlinCore.cpp
-
-      raw_adc_t Temperature::readBedRaw(const uint8_t bed) {
-        // 1) Leia o raw 16-bit do ADS1115
-        int16_t raw16 = tempSensor.readRaw(bed);
-        // 2) Escalone para a faixa de termistor (p.ex. 0–1023)
-        return map(raw16, 0, 32767, 0, MAX_RAW_THERMISTOR_VALUE);
-      }
-    #endif
+  raw_adc_t Temperature::readBedRaw(const uint8_t bed) {
+  // 1) Leia o raw 16-bit do ADS1115
+  int16_t raw16 = tempSensor.readADC(bed);
+  // 2) Escalone para a faixa de termistor (p.ex. 0–1023)
+  return map(raw16, 0, 32767, 0, MAX_RAW_THERMISTOR_VALUE);
+ }
+#endif
 
 #if EITHER(HAS_COOLER, LASER_COOLANT_FLOW_METER)
   #include "../feature/cooler.h"
@@ -231,9 +230,9 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
 
 #if HAS_HEATED_BED
 
-    //#####################################################################################################
-    //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
+  //#####################################################################################################
+  //########################          TCC LUCAS          ################################################
+  //#####################################################################################################
 
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     /**
@@ -241,28 +240,28 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
      * O GET_TEXT_F(MSG_BED) é o texto base (“Bed”).
      */
     #define _BED_FSTR(h) \
-      (h) == H_BED0 ? GET_TEXT_F(MSG_BED)       : \
-      (h) == H_BED1 ? PSTR("1")                 : \
-      (h) == H_BED2 ? PSTR("2")                 : \
-      (h) == H_BED3 ? PSTR("3")                 : \
-      /* fallback: concatena nothing */          /* */
-
+      ((h) == H_BED0 ? GET_TEXT_F(MSG_BED) : \
+      (h) == H_BED1 ? PSTR("1") : \
+      (h) == H_BED2 ? PSTR("2") : \
+      (h) == H_BED3 ? PSTR("3") : \
+      nullptr)
   #else
     // Single‐bed continua inalterado
     #define _BED_FSTR(h) \
-      (h) == H_BED  ? GET_TEXT_F(MSG_BED)       : \
-      /* fallback */                            /* */
+      ((h) == H_BED ? GET_TEXT_F(MSG_BED) : nullptr)
   #endif
 
 #else
-  #define _BED_FSTR(h) /* nada */
-#endif
+  #define _BED_FSTR(h) nullptr
+#endif // HAS_HEATED_BED
+
 
 #if HAS_HEATED_CHAMBER
-  #define _CHAMBER_FSTR(h) (h) == H_CHAMBER ? GET_TEXT_F(MSG_CHAMBER) :
+  #define _CHAMBER_FSTR(h) ((h) == H_CHAMBER ? GET_TEXT_F(MSG_CHAMBER) : nullptr)
 #else
-  #define _CHAMBER_FSTR(h)
-#endif
+  #define _CHAMBER_FSTR(h) nullptr
+#endif // HAS_HEATED_CHAMBER
+
 #if HAS_COOLER
   #define _COOLER_FSTR(h) (h) == H_COOLER ? GET_TEXT_F(MSG_COOLER) :
 #else
@@ -502,12 +501,14 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
 
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     // Vetor de info e limites por cama
-    bed_info_t   Temperature::temp_bed[MULTI_BED_COUNT];
     raw_adc_t    Temperature::mintemp_raw_BED[MULTI_BED_COUNT] = { 
-      [0 ... MULTI_BED_COUNT-1] = TEMP_SENSOR_BED_RAW_LO_TEMP 
+      for (uint8_t i = 0; i < MULTI_BED_COUNT; i++)
+      temp_bed[i].raw = TEMP_SENSOR_BED_RAW_LO_TEMP;
+ 
     };
     raw_adc_t    Temperature::maxtemp_raw_BED[MULTI_BED_COUNT] = { 
-      [0 ... MULTI_BED_COUNT-1] = TEMP_SENSOR_BED_RAW_HI_TEMP 
+      for (uint8_t i = 0; i < MULTI_BED_COUNT; i++)
+      temp_bed[i].raw = TEMP_SENSOR_BED_RAW_HI_TEMP;
     };
     TERN_(WATCH_BED, bed_watch_t Temperature::watch_bed[MULTI_BED_COUNT]);
     IF_DISABLED(PIDTEMPBED, millis_t Temperature::next_bed_check_ms[MULTI_BED_COUNT]);
@@ -1348,12 +1349,12 @@ void Temperature::_temp_error(const heater_id_t heater_id, FSTR_P const serial_m
 
     #if HAS_TEMP_REDUNDANT
       if (heater_id == H_REDUNDANT) {
-        SERIAL_ECHOPGM(STR_REDUNDANT); // print redundant and cascade to print target, too.
+        SERIAL_ECHOPGM(STR_REDUNDANT);
         real_heater_id = (heater_id_t)HEATER_ID(TEMP_SENSOR_REDUNDANT_TARGET);
       }
     #endif
 
-        switch (real_heater_id) {
+    switch (real_heater_id) {
       OPTCODE(HAS_TEMP_COOLER,
         case H_COOLER:  SERIAL_ECHOPGM(STR_COOLER); break)
       OPTCODE(HAS_TEMP_PROBE,
@@ -1363,15 +1364,14 @@ void Temperature::_temp_error(const heater_id_t heater_id, FSTR_P const serial_m
       OPTCODE(HAS_TEMP_CHAMBER,
         case H_CHAMBER: SERIAL_ECHOPGM(STR_HEATER_CHAMBER); break)
 
-    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-      // Cada cama imprime “Bed”, “Bed1”, “Bed2” ou “Bed3”
-      case H_BED0: SERIAL_ECHOPGM(STR_HEATER_BED); break;      // Cama 0  
-      case H_BED1: SERIAL_ECHOPGM(PSTR("Bed1"));         break;  
-      case H_BED2: SERIAL_ECHOPGM(PSTR("Bed2"));         break;  
-      case H_BED3: SERIAL_ECHOPGM(PSTR("Bed3"));         break;  
-    #elif HAS_TEMP_BED
-      case H_BED:  SERIAL_ECHOPGM(STR_HEATER_BED);       break;
-    #endif
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        case H_BED0: SERIAL_ECHOPGM(STR_HEATER_BED); break;
+        case H_BED1: SERIAL_ECHOPGM(PSTR("Bed1")); break;
+        case H_BED2: SERIAL_ECHOPGM(PSTR("Bed2")); break;
+        case H_BED3: SERIAL_ECHOPGM(PSTR("Bed3")); break;
+      #elif HAS_TEMP_BED
+        case H_BED: SERIAL_ECHOPGM(STR_HEATER_BED); break;
+      #endif
 
       default:
         if (real_heater_id >= 0)
@@ -1380,6 +1380,8 @@ void Temperature::_temp_error(const heater_id_t heater_id, FSTR_P const serial_m
 
     SERIAL_EOL();
   }
+}
+
 
   disable_all_heaters(); // always disable (even for bogus temp)
   hal.watchdog_refresh();
@@ -4025,27 +4027,23 @@ void Temperature::isr() {
    */
   static void print_heater_state(const heater_id_t e, const_celsius_float_t c, const_celsius_float_t t
     OPTARG(SHOW_TEMP_ADC_VALUES, const float r)
-  ) {
-    char k;
+    ) {
+    char k = '?';
+
     switch (e) {
-      default:
-        #if HAS_TEMP_HOTEND
-          k = 'T'; break;
-        #endif
-      // Multi-bed: trate H_BED..H_BED3 todos com k='B'
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-        case H_BED: 
+        case H_BED:
         case H_BED1:
         case H_BED2:
         case H_BED3:
-          k = 'B'; 
+          k = 'B';
           break;
-        #elif HAS_TEMP_BED
-        // Single-bed
-        case H_BED: 
-          k = 'B'; 
+      #elif HAS_TEMP_BED
+        case H_BED:
+          k = 'B';
           break;
-        #endif
+      #endif
+
       #if HAS_TEMP_CHAMBER
         case H_CHAMBER: k = 'C'; break;
       #endif
@@ -4061,40 +4059,48 @@ void Temperature::isr() {
       #if HAS_TEMP_REDUNDANT
         case H_REDUNDANT: k = 'R'; break;
       #endif
+
+      #if HAS_TEMP_HOTEND
+        default:
+          k = 'T';
+          break;
+      #else
+        default:
+          break;
+      #endif
     }
+
     SERIAL_CHAR(' ', k);
     #if HAS_MULTI_HOTEND
       if (e >= 0) SERIAL_CHAR('0' + e);
     #endif
+
     #ifdef SERIAL_FLOAT_PRECISION
       #define SFP _MIN(SERIAL_FLOAT_PRECISION, 2)
     #else
       #define SFP 2
     #endif
+
     SERIAL_CHAR(':');
     SERIAL_PRINT(c, SFP);
     SERIAL_ECHOPGM(" /");
     SERIAL_PRINT(t, SFP);
 
-    //#####################################################################################################
-    //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
-
-  // Se for cama em multi-bed, imprime o índice 0..3
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
       if (e >= H_BED && e < H_BED + MULTI_BED_COUNT)
         SERIAL_CHAR('0' + (e - H_BED));
     #endif
 
     #if ENABLED(SHOW_TEMP_ADC_VALUES)
-      // Temperature MAX SPI boards do not have an OVERSAMPLENR defined
       SERIAL_ECHOPGM(" (", TERN(HAS_MAXTC_LIBRARIES, k == 'T', false) ? r : r * RECIPROCAL(OVERSAMPLENR));
       SERIAL_CHAR(')');
     #endif
+
     delay(2);
   }
+#endif
 
-  void Temperature::print_heater_states(const int8_t target_extruder
+void Temperature::print_heater_states(const int8_t target_extruder
     OPTARG(HAS_TEMP_REDUNDANT, const bool include_r/*=false*/)
   ) {
     #if HAS_TEMP_HOTEND
@@ -4366,15 +4372,15 @@ void Temperature::isr() {
     //#####################################################################################################
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
 
-/**
- * Wait for a specific bed to reach its target temperature (M190 P<bed>).
- *
- * @param bed                  Bed index [0 … MULTI_BED_COUNT-1]
- * @param no_wait_for_cooling  If true, returns immediately when cooling is requested
- * @param click_to_cancel      If true and UI click detected, abort wait
- * @return true if reached target (and residency, if configured), false if aborted
- */
-bool Temperature::wait_for_bed(
+      /**
+       * Wait for a specific bed to reach its target temperature (M190 P<bed>).
+       *
+       * @param bed                  Bed index [0 … MULTI_BED_COUNT-1]
+       * @param no_wait_for_cooling  If true, returns immediately when cooling is requested
+       * @param click_to_cancel      If true and UI click detected, abort wait
+       * @return true if reached target (and residency, if configured), false if aborted
+       */
+    bool Temperature::wait_for_bed(
     const uint8_t bed,
     const bool no_wait_for_cooling/*=true*/,
     const bool click_to_cancel/*=false*/

@@ -528,7 +528,7 @@
 
 //====================================== Multi-Bed Settings ===========================================
 #define TEMP_SENSOR_BED 3000
-#define MULTI_BED_COUNT  4  // pode ser 1, 2, 3 ou 4
+#define MULTI_BED_COUNT  4  // pode ser 1, 2, 3 ou 4, valores maiores quebram compilação...
 #define PCF8574_ADDRESS   0x20
 #define ADS1115_ADDRESS   0x48
 

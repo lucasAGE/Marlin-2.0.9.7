@@ -52,7 +52,7 @@
 //#####################################################################################################
 //########################          TCC LUCAS          ################################################
 //#####################################################################################################
-// Element identifiers. Positive values are hotends. Negative values are other heaters or coolers.
+// Identificadores de elementos. Valores positivos são hotends. Valores negativos são outros aquecedores ou resfriadores.
 typedef enum : int8_t {
   H_REDUNDANT = HID_REDUNDANT,
   H_COOLER    = HID_COOLER,
@@ -75,14 +75,6 @@ typedef enum : int8_t {
 } heater_id_t;
 
 
-#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-  static bool wait_for_bed(const uint8_t bed,
-                           const bool no_wait_for_cooling=true,
-                           const bool click_to_cancel=false);
-#else
-  static bool wait_for_bed(const bool no_wait_for_cooling=true,
-                           const bool click_to_cancel=false);
-#endif
 
 
 // PID storage
@@ -135,15 +127,33 @@ hotend_pid_t;
 /**
  * States for ADC reading in the ISR
  */
-     //#####################################################################################################
-      //########################          TCC LUCAS          ################################################
-      //#####################################################################################################
-
+   
   enum ADCSensorState : char {
   StartSampling,
   #if HAS_TEMP_ADC_0
     PrepareTemp_0, MeasureTemp_0,
   #endif
+
+    //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
+/**
+ * Mapeamento das funções de preparação e medição de temperatura das camas aquecidas.
+ *
+ * Quando o suporte a múltiplas camas aquecidas (ENABLE_MULTI_HEATED_BEDS) está habilitado,
+ * o código define pares de funções específicas para cada cama individual (BED0 a BED3),
+ * desde que haja um sensor ADC correspondente habilitado (HAS_TEMP_ADC_BEDx).
+ *
+ * - PrepareTemp_BEDx: função responsável por configurar ou iniciar a leitura de temperatura da cama x.
+ * - MeasureTemp_BEDx: função responsável por realizar a conversão/medição da leitura da cama x.
+ *
+ * Caso o suporte a múltiplas camas esteja desativado, utiliza-se a versão única tradicional:
+ * - PrepareTemp_BED / MeasureTemp_BED: funções para a cama aquecida padrão (única).
+ *
+ * Isso permite que o sistema de controle de temperatura funcione corretamente tanto para
+ * configurações com uma cama quanto para sistemas multi-bed com controle individual por cama.
+ */
+
 
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     #if HAS_TEMP_ADC_BED0
@@ -434,6 +444,40 @@ class Temperature {
 
   public:
 
+      /**
+     * Aguarda que a(s) cama(s) aquecida(s) atinjam a temperatura alvo antes de prosseguir.
+     *
+     * Se o recurso ENABLE_MULTI_HEATED_BEDS estiver ativado, esta função aceita o índice da cama (0 a 3)
+     * e aguarda especificamente essa cama atingir a temperatura alvo. Isso permite controle individualizado
+     * de múltiplas camas aquecidas.
+     *
+     * Parâmetros:
+     *  - bed: índice da cama (somente quando MULTI_BEDS estiver habilitado).
+     *  - no_wait_for_cooling: se verdadeiro, ignora o tempo de espera se a cama estiver esfriando.
+     *  - click_to_cancel: se verdadeiro, permite que o usuário cancele a espera através de um clique no LCD.
+     *
+     * Retorno:
+     *  - true: a cama atingiu a temperatura alvo.
+     *  - false: o processo foi cancelado pelo usuário (se click_to_cancel for verdadeiro).
+     *
+     * Quando o suporte a múltiplas camas estiver desativado, a função se aplica à cama única padrão.
+     */
+
+
+
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      // Multi-bed: precisa do índice da cama
+      bool wait_for_bed(const uint8_t bed,
+                              const bool no_wait_for_cooling = true
+                              OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+      );
+    #else
+      // Cama única (modo original do Marlin)
+      bool wait_for_bed(const bool no_wait_for_cooling = true
+                              OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+      );
+    #endif
+
     #if HAS_HOTEND
       static hotend_info_t temp_hotend[HOTENDS];
       static const celsius_t hotend_maxtemp[HOTENDS];
@@ -443,6 +487,21 @@ class Temperature {
     //#####################################################################################################
     //########################          TCC LUCAS          ################################################
     //#####################################################################################################
+    /**
+ * Declaração das variáveis de controle de temperatura da(s) cama(s) aquecida(s).
+ *
+ * Quando HAS_HEATED_BED está definido, indica que há pelo menos uma cama aquecida na impressora.
+ *
+ * - Se ENABLE_MULTI_HEATED_BEDS estiver ativado, define um array temp_bed[] com MULTI_BED_COUNT posições,
+ *   onde cada posição representa uma cama aquecida independente. Cada índice contém uma estrutura bed_info_t
+ *   com os dados de temperatura, estado de aquecimento, leitura atual, etc.
+ *
+ * - Caso contrário (modo tradicional com uma única cama), declara-se apenas uma única variável temp_bed
+ *   do tipo bed_info_t, representando a cama principal.
+ *
+ * Isso permite que o mesmo código trabalhe com uma ou várias camas, de forma modular.
+ */
+
     #if HAS_HEATED_BED
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
         static bed_info_t temp_bed[MULTI_BED_COUNT];
@@ -452,7 +511,7 @@ class Temperature {
     #endif
 
      
-    #endif
+    
     #if HAS_TEMP_PROBE
       static probe_info_t temp_probe;
     #endif
@@ -554,8 +613,20 @@ class Temperature {
      //#####################################################################################################
     //########################          TCC LUCAS          ################################################
     //#####################################################################################################
-
-    // Beds: IDLE_INDEX_BED0…BED3 (ou só IDLE_INDEX_BED, se single-bed)
+/**
+ * Define os índices de tempo ocioso (idle) associados às camas aquecidas,
+ * usados no controle de desligamento automático por inatividade (thermal idle timeout).
+ *
+ * - Se ENABLE_MULTI_HEATED_BEDS estiver ativado, define um índice distinto para cada cama:
+ *     IDLE_INDEX_BED0, IDLE_INDEX_BED1, ..., até o número definido por MULTI_BED_COUNT.
+ *   Isso permite aplicar timeouts individuais a cada cama aquecida.
+ *
+ * - Se estiver usando apenas uma cama (modo tradicional), define apenas:
+ *     IDLE_INDEX_BED
+ *
+ * A macro REPEAT é usada para gerar automaticamente os índices baseando-se no número de camas.
+ * A macro interna _IDLE_INDEX_B(N) cria a sequência de forma dinâmica.
+ */
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
       #define _IDLE_INDEX_B(N) , IDLE_INDEX_BED##N
       REPEAT(MULTI_BED_COUNT, _IDLE_INDEX_B)
@@ -572,9 +643,22 @@ class Temperature {
     //#####################################################################################################
   
     /**
-     * Mapeia um heater_id_t (H_E0…H_BED3) para o seu IdleIndex correspondente
-     * (para acessar heater_idle[...]).
-     */
+ * Retorna o índice de inatividade (IdleIndex) correspondente a um determinado ID de aquecedor.
+ *
+ * Essa função é utilizada para associar um aquecedor ao seu respectivo índice de tempo ocioso,
+ * o qual é usado no controle de desligamento automático após inatividade (thermal idle timeout).
+ *
+ * - Se o suporte a múltiplas camas (ENABLE_MULTI_HEATED_BEDS) estiver ativado:
+ *     Verifica se o heater_id está no intervalo das camas (H_BED até H_BED + MULTI_BED_COUNT),
+ *     e retorna o índice correspondente (IDLE_INDEX_BED0, BED1, etc.).
+ *
+ * - Se estiver em modo de cama única:
+ *     Retorna IDLE_INDEX_BED apenas se o heater_id for H_BED.
+ *
+ * O tipo retornado é IdleIndex, que representa a posição no array de controle de tempo ocioso
+ * (normalmente usado em funções de segurança térmica para desligar aquecedores após tempo sem uso).
+ */
+
     static IdleIndex idle_index_for_id(const int8_t heater_id) {
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
         if (heater_id >= H_BED && heater_id < H_BED + MULTI_BED_COUNT)
@@ -583,7 +667,7 @@ class Temperature {
         if (heater_id == H_BED) return IDLE_INDEX_BED;
       #endif
   // Resto do mapeamento
-}
+  }
 
       // Hotends e redundantes seguem o padrão original (E0…En)
       return (IdleIndex)_MAX(heater_id, 0);
@@ -631,6 +715,25 @@ class Temperature {
     //#####################################################################################################
     //########################          TCC LUCAS          ################################################
     //#####################################################################################################
+/**
+ * Variáveis de controle térmico para as camas aquecidas.
+ *
+ * Este bloco é incluído apenas se HAS_HEATED_BED estiver definido, indicando que há pelo menos uma cama no sistema.
+ * As variáveis são preparadas para suportar múltiplas camas aquecidas, usando arrays com MULTI_BED_COUNT posições.
+ *
+ * - watch_bed[]: estrutura de watchdog (WDT) para detectar runaway térmico em cada cama individual.
+ *   Usada apenas se o recurso WATCH_BED estiver habilitado. Monitora se a cama está aquecendo conforme esperado.
+ *
+ * - next_bed_check_ms[]: usado em modo Bang-Bang (sem PID), define o próximo instante em que será feito
+ *   o controle de temperatura para cada cama (geralmente em ciclos regulares).
+ *   Incluído apenas se PIDTEMPBED estiver desabilitado.
+ *
+ * - mintemp_raw_BED[] / maxtemp_raw_BED[]: armazenam os valores ADC mínimo e máximo permitidos para cada cama.
+ *   Esses valores servem como limites de segurança para detectar falhas como termistor desconectado
+ *   ou curto-circuito.
+ *
+ * Essa estrutura modular garante que cada cama tenha controle térmico e segurança individualizada.
+ */
 
     #if HAS_HEATED_BED
       // Watchdog de runaway, um por cama
@@ -749,9 +852,27 @@ class Temperature {
       static celsius_float_t analog_to_celsius_hotend(const raw_adc_t raw, const uint8_t e);
     #endif
 
-        //#####################################################################################################
+    //#####################################################################################################
     //########################          TCC LUCAS          ################################################
     //#####################################################################################################
+/**
+ * Conversão e leitura de temperatura da(s) cama(s) aquecida(s).
+ *
+ * Este bloco é incluído somente se HAS_HEATED_BED estiver definido, indicando que há pelo menos uma cama.
+ *
+ * - Em modo multi-bed (ENABLE_MULTI_HEATED_BEDS habilitado):
+ *     - analog_to_celsius_bed(raw, bed): converte um valor ADC bruto (raw) em temperatura (°C),
+ *       levando em conta o índice da cama (bed) para aplicar a tabela de conversão correta.
+ *     - readBedRaw(bed): realiza a leitura da temperatura em formato bruto (ADC) da cama especificada.
+ *
+ * - Em modo de cama única:
+ *     - analog_to_celsius_bed(raw): versão simplificada, sem necessidade de especificar o índice da cama,
+ *       pois há apenas uma tabela associada à cama única.
+ *     - Não há readBedRaw(), pois a leitura é tratada diretamente no fluxo principal.
+ *
+ * Essas funções separam a lógica de conversão e aquisição de temperatura, permitindo flexibilidade
+ * para múltiplas camas com sensores distintos.
+ */
 
     #if HAS_HEATED_BED
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
@@ -934,113 +1055,110 @@ class Temperature {
 
     #endif // HAS_HOTEND
 
-    #if HAS_HEATED_BED
-      /**
-       * Controla o acionamento dos MOSFETs via PCF8574 para as camas:
-       * em multi‐bed, varre temp_bed[0..MULTI_BED_COUNT-1],
-       * em single‐bed, só a cama única.
-       * Deve ser chamado periodicamente (ex: após updateTemperaturesFromRawValues()).
-       */
-      static void controlBedHeaters(const millis_t &ms);
-    #endif
-
-    //#####################################################################################################
+ //#####################################################################################################
     //########################          TCC LUCAS          ################################################
     //#####################################################################################################
+  /**
+   * Funções utilitárias e de controle para gerenciamento térmico individual das camas aquecidas (multi-bed).
+   *
+   * Este bloco só é incluído se HAS_HEATED_BED e ENABLE_MULTI_HEATED_BEDS estiverem ativados.
+   * Permite acessar e controlar individualmente o estado térmico de cada cama aquecida,
+   * de forma modular, utilizando o índice da cama (`bed`).
+   *
+   * Funções incluídas:
+   *
+   * - rawBedTemp(bed): Retorna a leitura bruta do ADC (formato 10-bit) da cama indicada.
+   *   (Disponível apenas se SHOW_TEMP_ADC_VALUES estiver ativado.)
+   *
+   * - degBed(bed): Retorna a temperatura atual da cama em graus Celsius com ponto flutuante.
+   *
+   * - wholeDegBed(bed): Retorna a temperatura arredondada da cama como valor inteiro.
+   *
+   * - degTargetBed(bed): Retorna a temperatura alvo (setpoint) atual da cama.
+   *
+   * - isHeatingBed(bed): Retorna true se a cama estiver em processo de aquecimento.
+   *
+   * - isCoolingBed(bed): Retorna true se a cama estiver resfriando (temperatura acima do alvo).
+   *
+   * - degBedNear(bed, temp): Retorna true se a temperatura atual da cama estiver próxima do valor informado,
+   *   dentro de uma faixa de histerese definida por TEMP_BED_HYSTERESIS.
+   *
+   * - start_watching_bed(bed): Reinicia o watchdog de runaway térmico para a cama,
+   *   monitorando se ela está aquecendo corretamente dentro de um tempo esperado.
+   *
+   * - setTargetBed(bed, celsius): Define um novo setpoint para a cama e reinicia o watchdog.
+   *   Aplica também o limite máximo de BED_MAX_TARGET. Pode acionar o powerManager se necessário.
+   *
+   * - wait_for_bed(bed, ...): Função de bloqueio usada no comando M190. Aguarda até que a cama atinja a temperatura alvo.
+   *   Pode ser configurada para ignorar resfriamento e permitir cancelamento por botão LCD.
+   *
+   * - wait_for_bed_heating(bed): Versão interna e não bloqueante da função acima, usada durante o aquecimento.
+   *
+   * - manage_heated_bed(bed, ms): Função periódica chamada no loop principal.
+   *   Responsável por aplicar o controle térmico bang-bang ou PID para a cama indicada.
+   *
+   * Essas funções garantem controle completo e seguro sobre cada cama aquecida em sistemas com múltiplas camas.
+   */
 
-    #if HAS_HEATED_BED
+      
+      #if HAS_HEATED_BED
 
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-      
-        #if ENABLED(SHOW_TEMP_ADC_VALUES)
-          /** Retorna a leitura raw (10-bit) da cama `bed`. */
-          static raw_adc_t rawBedTemp(const uint8_t bed) {
-            return temp_bed[bed].raw;
-          }
-        #endif
 
-        /** Temperatura atual em °C da cama `bed`. */
-        static celsius_float_t degBed(const uint8_t bed) {
-          return temp_bed[bed].celsius;
-        }
-        /** Valor inteiro arredondado da temperatura. */
-        static celsius_t wholeDegBed(const uint8_t bed) {
-          return static_cast<celsius_t>(degBed(bed) + 0.5f);
-        }
-        /** Setpoint em °C da cama `bed`. */
-        static celsius_t degTargetBed(const uint8_t bed) {
-          return temp_bed[bed].target;
-        }
-        /** true se a cama `bed` estiver aquecendo. */
-        static bool isHeatingBed(const uint8_t bed) {
-          return temp_bed[bed].target > temp_bed[bed].celsius;
-        }
-        /** true se a cama `bed` estiver resfriando. */
-        static bool isCoolingBed(const uint8_t bed) {
-          return temp_bed[bed].target < temp_bed[bed].celsius;
-        }
-        /** true se a temperatura arredondada estiver dentro da histerese de `temp`. */
+        // Leitura bruta (ADC) de uma cama específica
+        static raw_adc_t rawBedTemp(const uint8_t bed) { return temp_bed[bed].getraw(); }
+
+        // Temperatura atual em °C
+        static celsius_float_t degBed(const uint8_t bed) { return temp_bed[bed].celsius; }
+
+        // Temperatura arredondada
+        static celsius_t wholeDegBed(const uint8_t bed) { return static_cast<celsius_t>(degBed(bed) + 0.5f); }
+
+        // Temperatura alvo
+        static celsius_t degTargetBed(const uint8_t bed) { return temp_bed[bed].target; }
+
+        // Está aquecendo?
+        static bool isHeatingBed(const uint8_t bed) { return temp_bed[bed].target > temp_bed[bed].celsius; }
+
+        // Está esfriando?
+        static bool isCoolingBed(const uint8_t bed) { return temp_bed[bed].target < temp_bed[bed].celsius; }
+
+        // Temperatura próxima da desejada
         static bool degBedNear(const uint8_t bed, const celsius_t temp) {
           return ABS(wholeDegBed(bed) - temp) < TEMP_BED_HYSTERESIS;
         }
 
-        /** Inicia o watchdog de runaway para a cama `bed`. */
+        // Inicia a vigilância térmica de runaway
         static void start_watching_bed(const uint8_t bed) {
           TERN_(WATCH_BED, watch_bed[bed].restart(degBed(bed), degTargetBed(bed)));
         }
 
-        /** Ajusta o setpoint da cama `bed`. */
+        // Define o setpoint da cama específica
         static void setTargetBed(const uint8_t bed, const celsius_t celsius) {
           TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
           temp_bed[bed].target = _MIN(celsius, BED_MAX_TARGET);
           start_watching_bed(bed);
         }
-
-        /** Espera até a cama `bed` atingir o setpoint (M190). */
-        static bool wait_for_bed(const uint8_t bed,
-          const bool no_wait_for_cooling = true
-          OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
-        );
-
-        /** Versão sem bloqueio para uso interno. */
         static void wait_for_bed_heating(const uint8_t bed);
 
-        /**
-         * Gerencia o controle bang–bang ou PID da cama `bed`.
-         * Deve ser chamado periodicamente com timestamp `ms`.
-         */
         static void manage_heated_bed(const uint8_t bed, const millis_t &ms);
 
-      #else // single-bed
+      #else // single-bed legacy
 
         #if ENABLED(SHOW_TEMP_ADC_VALUES)
-          static raw_adc_t rawBedTemp() {
-            return temp_bed.getraw();
-          }
+          static raw_adc_t rawBedTemp()  { return temp_bed.getraw(); }
         #endif
 
-        static celsius_float_t degBed() {
-          return temp_bed.celsius;
-        }
-        static celsius_t wholeDegBed() {
-          return static_cast<celsius_t>(degBed() + 0.5f);
-        }
-        static celsius_t degTargetBed() {
-          return temp_bed.target;
-        }
-        static bool isHeatingBed() {
-          return temp_bed.target > temp_bed.celsius;
-        }
-        static bool isCoolingBed() {
-          return temp_bed.target < temp_bed.celsius;
-        }
+        static celsius_float_t degBed()  { return temp_bed.celsius; }
+        static celsius_t wholeDegBed()   { return static_cast<celsius_t>(degBed() + 0.5f); }
+        static celsius_t degTargetBed()  { return temp_bed.target; }
+        static bool isHeatingBed()       { return temp_bed.target > temp_bed.celsius; }
+        static bool isCoolingBed()       { return temp_bed.target < temp_bed.celsius; }
         static bool degBedNear(const celsius_t temp) {
-          return ABS(wholeDegBed() - temp) < TEMP_BED_HYSTERESIS;
+          return ABS(wholeDegBed() - temp) < (TEMP_BED_HYSTERESIS);
         }
 
-        static void start_watching_bed() {
-          TERN_(WATCH_BED, watch_bed.restart(degBed(), degTargetBed()));
-        }
+        static void start_watching_bed() { TERN_(WATCH_BED, watch_bed.restart(degBed(), degTargetBed())); }
 
         static void setTargetBed(const celsius_t celsius) {
           TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
@@ -1048,17 +1166,17 @@ class Temperature {
           start_watching_bed();
         }
 
-        static bool wait_for_bed(const bool no_wait_for_cooling = true
-          OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+        static bool wait_for_bed(const bool no_wait_for_cooling=true
+          OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel=false)
         );
 
         static void wait_for_bed_heating();
-
         static void manage_heated_bed(const millis_t &ms);
 
       #endif // ENABLE_MULTI_HEATED_BEDS
 
     #endif // HAS_HEATED_BED
+
 
 
     #if HAS_TEMP_PROBE
@@ -1214,11 +1332,23 @@ class Temperature {
 
       #if HAS_HEATED_BED
 
-      //#####################################################################################################
-      //########################          TCC LUCAS          ################################################
-      //#####################################################################################################
-
-
+        //#####################################################################################################
+        //########################          TCC LUCAS          ################################################
+        //#####################################################################################################
+        /**
+         * Reseta o temporizador de inatividade (idle) para a cama indicada e reinicia o watchdog de runaway térmico.
+       *
+       * Esta função deve ser chamada sempre que a cama for ativada ou receber um novo comando de temperatura,
+       * evitando que o sistema considere a cama inativa e a desligue automaticamente por timeout.
+       *
+       * - `bed`: índice da cama (0 até MULTI_BED_COUNT - 1).
+       *
+       * Funcionamento:
+       * - Converte o índice da cama (`bed`) no identificador global do aquecedor (`H_BED + bed`);
+       * - Usa `idle_index_for_id(...)` para obter o índice correspondente no array `heater_idle[]`;
+       * - Reseta o temporizador `heater_idle[idx]`;
+       * - Reinicia o watchdog da cama (caso WATCH_BED esteja habilitado).
+       */
         #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
           /**
            * Reseta o timer de idle para a cama `bed` (0…MULTI_BED_COUNT-1) e reinicia o watchdog.
@@ -1265,6 +1395,25 @@ class Temperature {
     #endif
 
   private:
+        /**
+     * Leitura e conversão das temperaturas brutas (ADC → Celsius).
+     *
+     * - raw_temps_ready: flag volátil que indica se as leituras brutas dos sensores (raw ADC)
+     *   já foram realizadas e estão prontas para serem convertidas em temperatura real.
+     *
+     * - update_raw_temperatures(): função que realiza a leitura dos sensores e preenche os valores brutos.
+     *   Esta função é normalmente chamada em interrupções ou no início do ciclo térmico principal.
+     *
+     * - updateTemperaturesFromRawValues(): converte os valores brutos de todos os sensores (inclusive hotends,
+     *   cama(s), câmara, etc.) para temperaturas em Celsius, preenchendo as variáveis `celsius` correspondentes.
+     *
+     * - updateTemperaturesIfReady(): função auxiliar que verifica se `raw_temps_ready` está true.
+     *   Se estiver, chama `updateTemperaturesFromRawValues()`, reseta a flag e retorna true.
+     *   Caso contrário, retorna false sem fazer nada.
+     *
+     * Essa estrutura permite que a conversão só ocorra quando os dados estiverem prontos,
+     * garantindo sincronismo entre leitura e cálculo.
+     */
 
     // Reading raw temperatures and converting to Celsius when ready
     static volatile bool raw_temps_ready;
@@ -1299,27 +1448,9 @@ class Temperature {
     #if HAS_HOTEND
       static float get_pid_output_hotend(const uint8_t e);
     #endif
-
-
-    //#####################################################################################################
-    //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
-
-    #if ENABLED(PIDTEMPBED)
-      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    /**
-     * Retorna a saída PID para a cama `bed` (0…MULTI_BED_COUNT-1).
-     */
-    static float get_pid_output_bed(const uint8_t bed);
-      #else
-    /**
-     * Retorna a saída PID para a cama única.
-     */
-    static float get_pid_output_bed();
+     #if ENABLED(PIDTEMPBED)
+      static float get_pid_output_bed();
     #endif
-    #endif
-
-
     #if ENABLED(PIDTEMPCHAMBER)
       static float get_pid_output_chamber();
     #endif
@@ -1343,7 +1474,26 @@ class Temperature {
           #undef _RUNAWAY_IND_E
         #endif
 
-        // Beds: RUNAWAY_IND_BED0…BED3 (ou só BED se single-bed)
+         //#####################################################################################################
+         //########################          TCC LUCAS          ################################################
+         //#####################################################################################################
+         /**
+         * Define os índices de proteção térmica (runaway) para as camas aquecidas.
+         *
+         * Usado internamente pelo sistema de proteção térmica do Marlin (THERMAL_PROTECTION_BED),
+         * para associar cada cama aquecida ao seu respectivo índice de controle de runaway.
+         *
+         * - Em sistemas com múltiplas camas (ENABLE_MULTI_HEATED_BEDS ativado):
+         *     Define um índice específico para cada cama, usando:
+         *       RUNAWAY_IND_BED0, RUNAWAY_IND_BED1, ..., até MULTI_BED_COUNT.
+         *     A macro REPEAT é usada para gerar automaticamente os índices com base na quantidade de camas.
+         *
+         * - Em sistemas com cama única:
+         *     Define apenas o índice padrão: RUNAWAY_IND_BED
+         *
+         * Esses índices são utilizados para controlar e monitorar o tempo máximo permitido
+         * para que a temperatura alcance o setpoint. Caso contrário, ocorre erro de runaway.
+         */
         #if ENABLED(THERMAL_PROTECTION_BED)
           #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
             #define _RUNAWAY_IND_B(N) , RUNAWAY_IND_BED##N
@@ -1375,13 +1525,43 @@ class Temperature {
          //#####################################################################################################
          //########################          TCC LUCAS          ################################################
          //#####################################################################################################
-
-         #if ENABLED(THERMAL_PROTECTION_BED) && ENABLED(ENABLE_MULTI_HEATED_BEDS)
-            if (heater_id >= H_BED0 && heater_id < H_BED0 + MULTI_BED_COUNT)
-              return (RunawayIndex)(RUNAWAY_IND_BED0 + (heater_id - H_BED0));
-          #elif ENABLED(THERMAL_PROTECTION_BED)
-            if (heater_id == H_BED) return RUNAWAY_IND_BED;
+        /**
+         * Define os índices de proteção térmica (runaway) para as camas aquecidas.
+         *
+         * Usado internamente pelo sistema de proteção térmica do Marlin (THERMAL_PROTECTION_BED),
+         * para associar cada cama aquecida ao seu respectivo índice de controle de runaway.
+         *
+         * - Em sistemas com múltiplas camas (ENABLE_MULTI_HEATED_BEDS ativado):
+         *     Cada cama recebe um índice único:
+         *       RUNAWAY_IND_BED0, RUNAWAY_IND_BED1, ..., até RUNAWAY_IND_BED{MULTI_BED_COUNT-1}.
+         *     No mapeamento, verifica-se se o heater_id está entre H_BED0 e H_BED0 + (MULTI_BED_COUNT - 1).
+         *     O índice retornado é calculado como:
+         *       RUNAWAY_IND_BED0 + (heater_id - H_BED0)
+         *     Isso gera automaticamente os indices corretos para cada cama, em ordem.
+         *
+         * - Em sistemas com cama única:
+         *     Existe apenas o índice padrão RUNAWAY_IND_BED.
+         *     No mapeamento, verifica-se se heater_id == H_BED e retorna-se RUNAWAY_IND_BED.
+         *
+         * Esses índices são usados em tr_state_machine[] para monitorar cada cama individualmente.
+         * Se a temperatura não alcançar o setpoint dentro do tempo limite, ocorre erro de runaway
+         * para a cama correspondente (RUNAWAY_IND_BED<n> ou RUNAWAY_IND_BED).
+         */
+        #if ENABLED(THERMAL_PROTECTION_BED)
+          #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+             // Se o heater_id corresponder a H_BED0..H_BED{MULTI_BED_COUNT-1}
+            if (heater_id >= H_BED0 && heater_id < H_BED0 + MULTI_BED_COUNT) {
+               return RunawayIndex(RUNAWAY_IND_BED0 + (heater_id - H_BED0));
+            }
+            #else
+             // Cama única: só H_BED
+             if (heater_id == H_BED) {
+               return RUNAWAY_IND_BED;
+             }
           #endif
+        #endif
+
+
         #if ENABLED(THERMAL_PROTECTION_CHAMBER)
           if (heater_id == H_CHAMBER) return RUNAWAY_IND_CHAMBER;
         #endif

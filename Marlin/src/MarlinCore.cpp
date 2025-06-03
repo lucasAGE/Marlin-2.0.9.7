@@ -259,10 +259,11 @@
 
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
   #include <Wire.h>
-  #include "PCF8574.h"
-  #include "ADS1X15.h"
+  #include <PCF8574_ESP.h>
+  #include <ADS1X15.h>
   static ADS1115 tempSensor(0x48);
-  static PCF8574 bedExpander(0x20);
+  static PCF857x bedExpander(0x20, &Wire, false);
+  
 #endif
 
 
@@ -1168,8 +1169,8 @@ void setup() {
 
      
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-        tempSensor.begin(Wire, /*pga=*/1, /*dataRate=*/128);
-        bedExpander.begin(Wire);
+        tempSensor.begin();
+        bedExpander.begin();
       #endif
 
 
