@@ -252,20 +252,6 @@
   #include "feature/easythreed_ui.h"
 #endif
 
-      //#####################################################################################################
-      //########################          TCC LUCAS          ################################################
-      //#####################################################################################################
-
-
-#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-  #include <Wire.h>
-  #include <PCF8574_ESP.h>
-  #include <ADS1X15.h>
-  static ADS1115 tempSensor(0x48);
-  static PCF857x bedExpander(0x20, &Wire, false);
-  
-#endif
-
 
 PGMSTR(M112_KILL_STR, "M112 Shutdown");
 
@@ -1163,15 +1149,16 @@ void setup() {
   millis_t serial_connect_timeout = millis() + 1000UL;
   while (!MYSERIAL1.connected() && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
 
-      //#####################################################################################################
-      //########################          TCC LUCAS          ################################################
-      //#####################################################################################################
+  //#####################################################################################################
+  //########################          TCC LUCAS          ################################################
+  //#####################################################################################################
 
-     
-      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-        tempSensor.begin();
-        bedExpander.begin();
-      #endif
+ 
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    Temperature::init_beds();  // Inicializa sensores e limites das camas
+    Temperature::init_bed_temp_limits();  // ✅ Agora permitido
+  #endif
+
 
 
   #if HAS_MULTI_SERIAL && !HAS_ETHERNET
