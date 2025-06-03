@@ -304,9 +304,9 @@ Controle de aquecimento
 3.1. Dentro do laço de controle de temperatura (thermalManager), após cálculo:
 for i in 0…MULTI_BED_COUNT–1:
 needOn = temp_bed[i].temp < temp_bed[i].target
-if needOn != temp_bed[i].heating:
+if needOn != temp_bed[i].soft_pwm_amount:
 bedExpander.writeBit(BED0_PCF_BIT+i, needOn)
-temp_bed[i].heating = needOn
+temp_bed[i].soft_pwm_amount = needOn
 
 Limpeza de código legado
 4.1. Remover referências diretas a HEATER_BED_PIN em pins_*.h
