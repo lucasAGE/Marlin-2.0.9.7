@@ -64,9 +64,12 @@ void Temperature::init_beds() {
       mintemp_raw_BED[i]  = TEMP_SENSOR_BED_RAW_LO_TEMP;
       maxtemp_raw_BED[i]  = TEMP_SENSOR_BED_RAW_HI_TEMP;
       temp_bed[i].soft_pwm_amount = 0;
+      temp_bed[i].celsius = 0;
+      temp_bed[i].setraw(0);
     }
   #endif
 }
+
 
 
 #if EITHER(HAS_COOLER, LASER_COOLANT_FLOW_METER)
@@ -516,9 +519,9 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
   Temperature::heater_idle_t Temperature::heater_idle[NR_HEATER_IDLE]; // = { { 0 } }
 #endif
 
-    //#####################################################################################################
-    //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
+  //#####################################################################################################
+  //########################          TCC LUCAS          ################################################
+  //#####################################################################################################
  
 #if HAS_HEATED_BED
 
@@ -533,7 +536,6 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
   #else
 
     // Fallback single-bed
-    bed_info_t Temperature::temp_bed;
     raw_adc_t Temperature::mintemp_raw_BED = TEMP_SENSOR_BED_RAW_LO_TEMP;
     raw_adc_t Temperature::maxtemp_raw_BED = TEMP_SENSOR_BED_RAW_HI_TEMP;
     TERN_(WATCH_BED, bed_watch_t Temperature::watch_bed);
@@ -1781,10 +1783,8 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
     }
 
     #if ENABLED(THERMAL_PROTECTION_BED)
-      const uint8_t bed_index = hid - H_BED;  // Garante índice 0..3 a partir de H_BED0..3
-      tr_state_machine[
         runaway_index_for_id(hid)
-      ].run(degBed(bed), degTargetBed(bed), hid,
+      ].run(degBed(bed), degTargetBed(bed), hid;
             THERMAL_PROTECTION_BED_PERIOD,
             TEMP_BED_HYSTERESIS);
     #endif
@@ -2771,16 +2771,19 @@ void Temperature::init() {
     //#####################################################################################################
 
 
-  #if ENABLED(USE_PCF8574_FOR_BED_OUTPUTS)
-    // Nada aqui: todo controle de MOSFETs de cama fica em controlBedHeaters()
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  // Inicializa todas as saídas das camas como desligadas (nível lógico 0)
+  uint8_t bed_mask = 0;
+  bedExpander.write8(bed_mask);  // Garante que todas as camas estão OFF no início
   #else
-    // Fallback para quem ainda quiser usar o pino direto
+    // Fallback para uso de pino direto para cama única
     #ifdef BOARD_OPENDRAIN_MOSFETS
       OUT_WRITE_OD(HEATER_BED_PIN, HEATER_BED_INVERTING);
     #else
       OUT_WRITE(HEATER_BED_PIN, HEATER_BED_INVERTING);
     #endif
-  #endif  // USE_PCF8574_FOR_BED_OUTPUTS
+  #endif
+
 
 
   #if HAS_HEATED_CHAMBER
@@ -2835,13 +2838,14 @@ void Temperature::init() {
   TERN_(HAS_JOY_ADC_Y,          hal.adc_enable(JOY_Y_PIN));
   TERN_(HAS_JOY_ADC_Z,          hal.adc_enable(JOY_Z_PIN));
 
-    //#####################################################################################################
-    //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
+  //#####################################################################################################
+  //########################          TCC LUCAS          ################################################
+  //#####################################################################################################
 
   #if HAS_HEATED_BED
-  #if DISABLED(ENABLE_MULTI_HEATED_BEDS)
-  TERN_(HAS_TEMP_ADC_BED,     hal.adc_enable(TEMP_BED_PIN));
+    #if DISABLED(ENABLE_MULTI_HEATED_BEDS)
+      TERN_(HAS_TEMP_ADC_BED,     hal.adc_enable(TEMP_BED_PIN));
+    #endif
   #endif
 
   TERN_(HAS_TEMP_ADC_CHAMBER,   hal.adc_enable(TEMP_CHAMBER_PIN));
@@ -2960,31 +2964,27 @@ void Temperature::init() {
   // TODO: combine these into the macros above
     //#####################################################################################################
     //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
+  //#####################################################################################################
 
+  #if HAS_HEATED_BED
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      // Calibra os valores raw mínimo e máximo para cada cama
+      for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
+        while (analog_to_celsius_bed(mintemp_raw_BED[b], b) < BED_MINTEMP)
+          mintemp_raw_BED[b] += TEMPDIR(BED) * OVERSAMPLENR;
 
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    // Calibra os valores raw mínimo e máximo para cada cama
-    for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
-      // Ajusta o raw mínimo até a temperatura mínima (BED_MINTEMP)
-      while (analog_to_celsius_bed(mintemp_raw_BED[b], b) < BED_MINTEMP) {
-        mintemp_raw_BED[b] += TEMPDIR(BED) * OVERSAMPLENR;
+        while (analog_to_celsius_bed(maxtemp_raw_BED[b], b) > BED_MAXTEMP)
+          maxtemp_raw_BED[b] -= TEMPDIR(BED) * OVERSAMPLENR;
       }
-      // Ajusta o raw máximo até a temperatura máxima (BED_MAXTEMP)
-      while (analog_to_celsius_bed(maxtemp_raw_BED[b], b) > BED_MAXTEMP) {
-        maxtemp_raw_BED[b] -= TEMPDIR(BED) * OVERSAMPLENR;
-      }
-    }
-  #else
-    // Single-bed mantém a lógica antiga
-    while (analog_to_celsius_bed(mintemp_raw_BED) < BED_MINTEMP) {
-      mintemp_raw_BED += TEMPDIR(BED) * OVERSAMPLENR;
-    }
-    while (analog_to_celsius_bed(maxtemp_raw_BED) > BED_MAXTEMP) {
-      maxtemp_raw_BED -= TEMPDIR(BED) * OVERSAMPLENR;
-    }
+    #else
+      while (analog_to_celsius_bed(mintemp_raw_BED) < BED_MINTEMP)
+        mintemp_raw_BED += TEMPDIR(BED) * OVERSAMPLENR;
+
+      while (analog_to_celsius_bed(maxtemp_raw_BED) > BED_MAXTEMP)
+        maxtemp_raw_BED -= TEMPDIR(BED) * OVERSAMPLENR;
+    #endif
   #endif
-  #endif // HAS_HEATED_BED
+
 
   #if HAS_HEATED_CHAMBER
     while (analog_to_celsius_chamber(mintemp_raw_CHAMBER) < CHAMBER_MINTEMP) mintemp_raw_CHAMBER += TEMPDIR(CHAMBER) * (OVERSAMPLENR);
@@ -3179,27 +3179,23 @@ void Temperature::disable_all_heaters() {
     //#####################################################################################################
 
   #if HAS_HEATED_BED
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    // Desliga todas as 4 camas
-    for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
-      // Primeiro parâmetro é a temperatura (0 = desligar), segundo é o índice da cama
-      setTargetBed(0, b);
-      temp_bed[b].soft_pwm_amount         = false;
-      temp_bed[b].soft_pwm_amount = 0;
-      // Garanta que o PCF8574 desligue o MOSFET
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      // Desliga todas as camas
       uint8_t state = bedExpander.read8();
-      state &= ~_BV(BED0_PCF_BIT + b);  // limpa o bit correspondente à cama 'b'
+      for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
+        setTargetBed(0, b);
+        temp_bed[b].soft_pwm_amount = 0;
+        state &= ~_BV(BED0_PCF_BIT + b);
+      }
       bedExpander.write8(state);
-
-    }
-  #else
-    // Single‐bed: seta target 0 para a única cama (índice 0)
-    setTargetBed(0, 0);
-    temp_bed.heating         = false;
-    temp_bed.soft_pwm_amount = 0;
-    WRITE_HEATER_BED(LOW);
+    #else
+      setTargetBed(0, 0);
+      temp_bed.heating = false;
+      temp_bed.soft_pwm_amount = 0;
+      WRITE_HEATER_BED(LOW);
+    #endif
   #endif
-#endif
+
 
   #if HAS_HEATED_CHAMBER
     setTargetChamber(0);
@@ -3664,20 +3660,16 @@ void Temperature::isr() {
       // Beds
       #if HAS_HEATED_BED
         #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-          // Multi-bed via PCF8574
+          uint8_t state = bedExpander.read8();  // read once
           for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
             const bool on = soft_pwm_bed[b].add(pwm_mask, temp_bed[b].soft_pwm_amount);
-            uint8_t state = bedExpander.read8();
             if (on)
-                state |= _BV(BED0_PCF_BIT + b);   // liga o bit da cama b
-             else
-                state &= ~_BV(BED0_PCF_BIT + b);  // desliga o bit da cama b
-
-              bedExpander.write8(state);
-
+              state |= _BV(BED0_PCF_BIT + b);  // liga o bit da cama b
+            else
+              state &= ~_BV(BED0_PCF_BIT + b); // desliga o bit da cama b
           }
+          bedExpander.write8(state);  // write once
         #else
-          // Single-bed via GPIO
           _PWM_MOD(BED, soft_pwm_bed, temp_bed);
         #endif
       #endif
@@ -3692,14 +3684,46 @@ void Temperature::isr() {
         _PWM_MOD(COOLER, soft_pwm_cooler, temp_cooler);
       #endif
 
-      // Fans (mantém inalterado)
       #if ENABLED(FAN_SOFT_PWM)
-        // ... código de PWM de ventiladores permanece aqui ...
+
+        #if ENABLED(USE_CONTROLLER_FAN)
+          WRITE(CONTROLLER_FAN_PIN, soft_pwm_controller.add(pwm_mask, soft_pwm_controller_speed));
+        #endif
+
+        #define _FAN_PWM(N) do{                                     \
+          uint8_t &spcf = soft_pwm_count_fan[N];                    \
+          spcf = (spcf & pwm_mask) + (soft_pwm_amount_fan[N] >> 1); \
+          WRITE_FAN(N, spcf > pwm_mask ? HIGH : LOW);               \
+        }while(0)
+
+        #if HAS_FAN0
+          _FAN_PWM(0);
+        #endif
+        #if HAS_FAN1
+          _FAN_PWM(1);
+        #endif
+        #if HAS_FAN2
+          _FAN_PWM(2);
+        #endif
+        #if HAS_FAN3
+          _FAN_PWM(3);
+        #endif
+        #if HAS_FAN4
+          _FAN_PWM(4);
+        #endif
+        #if HAS_FAN5
+          _FAN_PWM(5);
+        #endif
+        #if HAS_FAN6
+          _FAN_PWM(6);
+        #endif
+        #if HAS_FAN7
+          _FAN_PWM(7);
+        #endif
       #endif
     }
     else {
-      // Fase LOW do PWM
-
+      #define _PWM_LOW(N,S) do{ if (S.count <= pwm_count_tmp) WRITE_HEATER_##N(LOW); }while(0)
       // Hotends
       #if HAS_HOTEND
         #define _PWM_LOW_E(N) _PWM_LOW(N, soft_pwm_hotend[N])
@@ -3709,15 +3733,13 @@ void Temperature::isr() {
       // Beds
       #if HAS_HEATED_BED
         #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-          // Multi-bed: força LOW em cada bit
+          uint8_t state = bedExpander.read8();  // read once
           for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
             if (soft_pwm_bed[b].count <= pwm_count_tmp)
-              uint8_t state = bedExpander.read8();
-                state &= ~_BV(BED0_PCF_BIT + b);  // Limpa o bit da cama 'b' (desliga)
-                bedExpander.write8(state);
+              state &= ~_BV(BED0_PCF_BIT + b);  // desliga o bit da cama b
           }
+          bedExpander.write8(state);  // write once
         #else
-          // Single-bed
           _PWM_LOW(BED, soft_pwm_bed);
         #endif
       #endif
@@ -3734,7 +3756,33 @@ void Temperature::isr() {
 
       // Fans LOW (mantém inalterado)
       #if ENABLED(FAN_SOFT_PWM)
-        // ... código de ventiladores em LOW permanece aqui ...
+        #if HAS_FAN0
+          if (soft_pwm_count_fan[0] <= pwm_count_tmp) WRITE_FAN(0, LOW);
+        #endif
+        #if HAS_FAN1
+          if (soft_pwm_count_fan[1] <= pwm_count_tmp) WRITE_FAN(1, LOW);
+        #endif
+        #if HAS_FAN2
+          if (soft_pwm_count_fan[2] <= pwm_count_tmp) WRITE_FAN(2, LOW);
+        #endif
+        #if HAS_FAN3
+          if (soft_pwm_count_fan[3] <= pwm_count_tmp) WRITE_FAN(3, LOW);
+        #endif
+        #if HAS_FAN4
+          if (soft_pwm_count_fan[4] <= pwm_count_tmp) WRITE_FAN(4, LOW);
+        #endif
+        #if HAS_FAN5
+          if (soft_pwm_count_fan[5] <= pwm_count_tmp) WRITE_FAN(5, LOW);
+        #endif
+        #if HAS_FAN6
+          if (soft_pwm_count_fan[6] <= pwm_count_tmp) WRITE_FAN(6, LOW);
+        #endif
+        #if HAS_FAN7
+          if (soft_pwm_count_fan[7] <= pwm_count_tmp) WRITE_FAN(7, LOW);
+        #endif
+        #if ENABLED(USE_CONTROLLER_FAN)
+          if (soft_pwm_controller.count <= pwm_count_tmp) WRITE(CONTROLLER_FAN_PIN, LOW);
+        #endif
       #endif
     }
 
@@ -3762,7 +3810,20 @@ void Temperature::isr() {
       #endif
 
       #if HAS_HEATED_BED
-        _SLOW_PWM(BED, soft_pwm_bed, temp_bed);
+        #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+          uint8_t state = bedExpander.read8();  // read once
+          for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
+            soft_pwm_bed[b].count = temp_bed[b].soft_pwm_amount;
+            const bool on = soft_pwm_bed[b].count > 0 && soft_pwm_bed[b].ready(true);
+            if (on)
+              state |= _BV(BED0_PCF_BIT + b);  // liga
+            else if (soft_pwm_bed[b].ready(false))
+              state &= ~_BV(BED0_PCF_BIT + b); // desliga
+          }
+          bedExpander.write8(state); // write once
+        #else
+          _SLOW_PWM(BED, soft_pwm_bed, temp_bed);
+        #endif
       #endif
 
       #if HAS_HEATED_CHAMBER
@@ -3781,7 +3842,18 @@ void Temperature::isr() {
     #endif
 
     #if HAS_HEATED_BED
-      _PWM_OFF(BED, soft_pwm_bed);
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        // Versão otimizada: desliga camas se contador PWM estiver abaixo do limite
+        uint8_t state = bedExpander.read8();  // read once
+        for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
+          if (soft_pwm_bed[b].count < slow_pwm_count && soft_pwm_bed[b].ready(false)) {
+            state &= ~_BV(BED0_PCF_BIT + b);  // força LOW (desliga)
+          }
+        }
+        bedExpander.write8(state); // write once
+      #else
+        _PWM_OFF(BED, soft_pwm_bed);
+      #endif
     #endif
 
     #if HAS_HEATED_CHAMBER
@@ -3869,7 +3941,14 @@ void Temperature::isr() {
       #if HAS_HOTEND
         HOTEND_LOOP() soft_pwm_hotend[e].dec();
       #endif
-      TERN_(HAS_HEATED_BED, soft_pwm_bed.dec());
+
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b)
+          soft_pwm_bed[b].dec();
+      #else
+        TERN_(HAS_HEATED_BED, soft_pwm_bed.dec());
+      #endif
+
       TERN_(HAS_HEATED_CHAMBER, soft_pwm_chamber.dec());
       TERN_(HAS_COOLER, soft_pwm_cooler.dec());
     }
@@ -3939,14 +4018,48 @@ void Temperature::isr() {
     //########################          TCC LUCAS          ################################################
     //#####################################################################################################
     #if DISABLED(ENABLE_MULTI_HEATED_BEDS)
-    case PrepareTemp_BED:
-      hal.adc_start(TEMP_BED_PIN);
-      break;
-    case MeasureTemp_BED:
-      ACCUMULATE_ADC(temp_bed);
-      break;
-     #endif
+      case PrepareTemp_BED:
+        hal.adc_start(TEMP_BED_PIN);
+        break;
+      case MeasureTemp_BED:
+        ACCUMULATE_ADC(temp_bed);
+        break;
+    #endif
 
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      #if HAS_TEMP_ADC_BED0
+        case PrepareTemp_BED0:
+          hal.adc_start(TEMP_BED0_PIN);
+          break;
+        case MeasureTemp_BED0:
+          ACCUMULATE_ADC(temp_bed[0]);
+          break;
+      #endif
+      #if HAS_TEMP_ADC_BED1
+        case PrepareTemp_BED1:
+          hal.adc_start(TEMP_BED1_PIN);
+          break;
+        case MeasureTemp_BED1:
+          ACCUMULATE_ADC(temp_bed[1]);
+          break;
+      #endif
+      #if HAS_TEMP_ADC_BED2
+        case PrepareTemp_BED2:
+          hal.adc_start(TEMP_BED2_PIN);
+          break;
+        case MeasureTemp_BED2:
+          ACCUMULATE_ADC(temp_bed[2]);
+          break;
+      #endif
+      #if HAS_TEMP_ADC_BED3
+        case PrepareTemp_BED3:
+          hal.adc_start(TEMP_BED3_PIN);
+          break;
+        case MeasureTemp_BED3:
+          ACCUMULATE_ADC(temp_bed[3]);
+          break;
+      #endif
+    #endif
 
     #if HAS_TEMP_ADC_CHAMBER
       case PrepareTemp_CHAMBER: hal.adc_start(TEMP_CHAMBER_PIN); break;
@@ -4473,116 +4586,123 @@ void Temperature::print_heater_states(const int8_t target_extruder
     const bool no_wait_for_cooling/*=true*/,
     const bool click_to_cancel/*=false*/
 ) {
-  // Residency time setup
-  #if TEMP_BED_RESIDENCY_TIME > 0
-    millis_t residency_start_ms = 0;
-    bool first_loop = true;
-    #define TEMP_BED_CONDITIONS (!residency_start_ms || PENDING(now, residency_start_ms + SEC_TO_MS(TEMP_BED_RESIDENCY_TIME)))
-  #else
-    #define TEMP_BED_CONDITIONS (wants_to_cool ? isCoolingBed(bed) : isHeatingBed(bed))
-  #endif
+   if (ENABLED(ENABLE_MULTI_HEATED_BEDS)) {
+    // Multi-bed: delega para a cama 0
+    return wait_for_bed(0, no_wait_for_cooling, click_to_cancel);
+  }
+  else {
+    // Fallback para cama única
+    #if TEMP_BED_RESIDENCY_TIME > 0
+      millis_t residency_start_ms = 0;
+      bool first_loop = true;
+      #define TEMP_BED_CONDITIONS (!residency_start_ms || PENDING(now, residency_start_ms + SEC_TO_MS(TEMP_BED_RESIDENCY_TIME)))
+    #else
+      #define TEMP_BED_CONDITIONS (wants_to_cool ? isCoolingBed() : isHeatingBed())
+    #endif
 
-  #if DISABLED(BUSY_WHILE_HEATING) && ENABLED(HOST_KEEPALIVE_FEATURE)
-    KEEPALIVE_STATE(NOT_BUSY);
-  #endif
-
-  #if ENABLED(PRINTER_EVENT_LEDS)
-    const celsius_float_t start_temp = degBed(bed);
-    printerEventLEDs.onBedHeatingStart();
-  #endif
-
-  bool wants_to_cool = false;
-  celsius_float_t target_temp = -1, old_temp = 9999;
-  millis_t now, next_temp_ms = 0, next_cool_check_ms = 0;
-  wait_for_heatup = true;
-
-  do {
-    // Update target & direction
-    if (target_temp != degTargetBed(bed)) {
-      wants_to_cool = isCoolingBed(bed);
-      target_temp   = degTargetBed(bed);
-      if (no_wait_for_cooling && wants_to_cool) break;
-    }
-
-    now = millis();
-
-    // Print status every second
-    if (ELAPSED(now, next_temp_ms)) {
-      next_temp_ms = now + 1000UL;
-      // Print only this bed's state
-      print_heater_state(
-        heater_id_t(H_BED + bed),
-        degBed(bed), degTargetBed(bed)
-        OPTARG(SHOW_TEMP_ADC_VALUES, rawBedTemp(bed))
-      );
-      SERIAL_EOL();
-    }
-
-    idle();
-    gcode.reset_stepper_timeout(); // keep steppers alive
-
-    const celsius_float_t temp = degBed(bed);
+    #if DISABLED(BUSY_WHILE_HEATING) && ENABLED(HOST_KEEPALIVE_FEATURE)
+      KEEPALIVE_STATE(NOT_BUSY);
+    #endif
 
     #if ENABLED(PRINTER_EVENT_LEDS)
-      if (!wants_to_cool)
-        printerEventLEDs.onBedHeating(start_temp, temp, target_temp);
+      const celsius_float_t start_temp = degBed();
+      printerEventLEDs.onBedHeatingStart();
     #endif
 
-    #if TEMP_BED_RESIDENCY_TIME > 0
-      const celsius_float_t diff = ABS(target_temp - temp);
-      if (!residency_start_ms) {
-        if (diff < TEMP_BED_WINDOW)
-          residency_start_ms = now + (first_loop ? SEC_TO_MS(TEMP_BED_RESIDENCY_TIME) / 3 : 0);
-      }
-      else if (diff > TEMP_BED_HYSTERESIS) {
-        residency_start_ms = now;
-      }
-    #endif
+    bool wants_to_cool = false;
+    celsius_float_t target_temp = -1, old_temp = 9999;
+    millis_t now, next_temp_ms = 0, next_cool_check_ms = 0;
+    wait_for_heatup = true;
 
-    // Prevent infinite wait when cooling slope too slow
-    if (wants_to_cool) {
-      if (!next_cool_check_ms || ELAPSED(now, next_cool_check_ms)) {
-        if (old_temp - temp < float(MIN_COOLING_SLOPE_DEG_BED)) break;
-        next_cool_check_ms = now + SEC_TO_MS(MIN_COOLING_SLOPE_TIME_BED);
-        old_temp = temp;
+    do {
+      if (target_temp != degTargetBed()) {
+        wants_to_cool = isCoolingBed();
+        target_temp   = degTargetBed();
+        if (no_wait_for_cooling && wants_to_cool) break;
       }
+
+      now = millis();
+
+      if (ELAPSED(now, next_temp_ms)) {
+        next_temp_ms = now + 1000UL;
+        print_heater_state(
+          H_BED,
+          degBed(), degTargetBed()
+          OPTARG(SHOW_TEMP_ADC_VALUES, rawBedTemp())
+        );
+        SERIAL_EOL();
+      }
+
+      idle();
+      gcode.reset_stepper_timeout();
+
+      const celsius_float_t temp = degBed();
+
+      #if ENABLED(PRINTER_EVENT_LEDS)
+        if (!wants_to_cool)
+          printerEventLEDs.onBedHeating(start_temp, temp, target_temp);
+      #endif
+
+      #if TEMP_BED_RESIDENCY_TIME > 0
+        const celsius_float_t diff = ABS(target_temp - temp);
+        if (!residency_start_ms) {
+          if (diff < TEMP_BED_WINDOW)
+            residency_start_ms = now + (first_loop ? SEC_TO_MS(TEMP_BED_RESIDENCY_TIME) / 3 : 0);
+        }
+        else if (diff > TEMP_BED_HYSTERESIS) {
+          residency_start_ms = now;
+        }
+      #endif
+
+      if (wants_to_cool) {
+        if (!next_cool_check_ms || ELAPSED(now, next_cool_check_ms)) {
+          if (old_temp - temp < float(MIN_COOLING_SLOPE_DEG_BED)) break;
+          next_cool_check_ms = now + SEC_TO_MS(MIN_COOLING_SLOPE_TIME_BED);
+          old_temp = temp;
+        }
+      }
+
+      #if G26_CLICK_CAN_CANCEL
+        if (click_to_cancel && ui.use_click()) {
+          wait_for_heatup = false;
+          TERN_(HAS_MARLINUI_MENU, ui.quick_feedback());
+        }
+      #endif
+
+      #if TEMP_BED_RESIDENCY_TIME > 0
+        first_loop = false;
+      #endif
+
+    } while (wait_for_heatup && TEMP_BED_CONDITIONS);
+
+    #undef TEMP_BED_CONDITIONS
+
+    if (wait_for_heatup) {
+      wait_for_heatup = false;
+      ui.reset_status();
+      return true;
     }
 
-    #if G26_CLICK_CAN_CANCEL
-      if (click_to_cancel && ui.use_click()) {
-        wait_for_heatup = false;
-        TERN_(HAS_MARLINUI_MENU, ui.quick_feedback());
-      }
-    #endif
-
-    #if TEMP_BED_RESIDENCY_TIME > 0
-      first_loop = false;
-    #endif
-
-  } while (wait_for_heatup && TEMP_BED_CONDITIONS);
-
-  #undef TEMP_BED_CONDITIONS
-
-  if (wait_for_heatup) {
-    wait_for_heatup = false;
-    ui.reset_status();
-    return true;
+    return false;
   }
-
-  return false;
 }
 
 /**
  * Non-blocking helper to wait for a bed heating start.
  */
-void Temperature::wait_for_bed_heating(const uint8_t bed) {
-  if (isHeatingBed(bed)) {
-    SERIAL_ECHOLNPGM("Wait for bed heating...");
-    LCD_MESSAGE(MSG_BED_HEATING);
-    wait_for_bed(bed);
-    ui.reset_status();
-  }
+void Temperature::wait_for_bed_heating() {
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    wait_for_bed_heating(0); // Usa a cama 0 como padrão
+  #else
+    if (isHeatingBed()) {
+      SERIAL_ECHOLNPGM("Wait for bed heating...");
+      LCD_MESSAGE(MSG_BED_HEATING);
+      wait_for_bed();
+      ui.reset_status();
+    }
+  #endif
 }
+
 
 #endif // ENABLE_MULTI_HEATED_BEDS
 

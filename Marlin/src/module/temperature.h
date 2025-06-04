@@ -126,17 +126,17 @@ hotend_pid_t;
 
 /**
  * States for ADC reading in the ISR
- */
+*/
    
-  enum ADCSensorState : char {
+enum ADCSensorState : char {
   StartSampling,
   #if HAS_TEMP_ADC_0
     PrepareTemp_0, MeasureTemp_0,
-  #endif
+#endif
 
-    //#####################################################################################################
-      //########################          TCC LUCAS          ################################################
-      //#####################################################################################################
+//#####################################################################################################
+//########################          TCC LUCAS          ################################################
+//#####################################################################################################
 /**
  * Mapeamento das funções de preparação e medição de temperatura das camas aquecidas.
  *
@@ -152,27 +152,27 @@ hotend_pid_t;
  *
  * Isso permite que o sistema de controle de temperatura funcione corretamente tanto para
  * configurações com uma cama quanto para sistemas multi-bed com controle individual por cama.
- */
+*/
 
 
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    #if HAS_TEMP_ADC_BED0
-        PrepareTemp_BED0, MeasureTemp_BED0,
-      #endif
-      #if HAS_TEMP_ADC_BED1
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  #if HAS_TEMP_ADC_BED0
+       PrepareTemp_BED0, MeasureTemp_BED0,
+     #endif
+     #if HAS_TEMP_ADC_BED1
         PrepareTemp_BED1, MeasureTemp_BED1,
-      #endif
-      #if HAS_TEMP_ADC_BED2
+     #endif
+     #if HAS_TEMP_ADC_BED2
         PrepareTemp_BED2, MeasureTemp_BED2,
-      #endif
-      #if HAS_TEMP_ADC_BED3
-        PrepareTemp_BED3, MeasureTemp_BED3,
-      #endif
+    #endif
+    #if HAS_TEMP_ADC_BED3
+       PrepareTemp_BED3, MeasureTemp_BED3,
+     #endif
     #else
       #if HAS_TEMP_ADC_BED
         PrepareTemp_BED, MeasureTemp_BED,
-      #endif
-    #endif
+  #endif
+#endif
 
   #if HAS_TEMP_ADC_CHAMBER
     PrepareTemp_CHAMBER, MeasureTemp_CHAMBER,
