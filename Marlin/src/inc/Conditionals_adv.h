@@ -127,17 +127,19 @@
       //########################          TCC LUCAS          ################################################
       //#####################################################################################################
 
-#if TEMP_SENSOR_BED == 3000
+#if TEMP_SENSOR_BED == 3000 && MULTI_BED_COUNT>1
   #define ENABLE_MULTI_HEATED_BEDS
   #define HAS_TEMP_ADC_BED0 1
   #define HAS_TEMP_ADC_BED1 1
   #define HAS_TEMP_ADC_BED2 1
   #define HAS_TEMP_ADC_BED3 1
+  #define ADS1115_ADDRESS 0x48
+  #define PCF8574_ADDRESS 0x20
   #else
   #undef HAS_TEMP_ADC_BED0
   #undef HAS_TEMP_ADC_BED1
   #undef HAS_TEMP_ADC_BED2
-  #undef HAS_TEMP_ADC_BED3
+  #undef HAS_TEMP_ADC_BED3 
 #endif
 
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
@@ -150,6 +152,8 @@
 #else
   #define HID_BED      -1
 #endif
+
+
 
 
 #define HID_E0         0

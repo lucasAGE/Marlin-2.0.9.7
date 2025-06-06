@@ -1,31 +1,3 @@
-/**
- * Marlin 3D Printer Firmware
- * Copyright (c) 2020 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
- *
- * Based on Sprinter and grbl.
- * Copyright (c) 2011 Camiel Gubbels / Erik van der Zalm
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- *
- */
-
-/**
- * gcode/temp/M140_M190.cpp
- *
- * Bed target temperature control
- */
-
 #include "../../inc/MarlinConfig.h"
 
 #if HAS_HEATED_BED
@@ -47,17 +19,15 @@
  *  P<bed>    : Índice da cama aquecida (0 a 3). Opcional; padrão é cama 0. Ignorado se MULTI_BED desativado.
  *
  * Exemplos:
- *  M140 S60         → Define a temperatura da cama 0 para 60 °C e retorna imediatamente
- *  M190 R40         → Aguarda a cama 0 atingir 40 °C
- *  M140 P2 S70      → Define a cama 2 para 70 °C e retorna
- *  M190 P1 R90      → Aguarda a cama 1 atingir 90 °C
+ *  M140 S60         → Em multi‐bed, aplica 60 °C a todas as camas. Em single‐bed, aplica 60 °C à cama 0.
+ *  M190 R40         → Aguarda a(s) cama(s) atingir(em) 40 °C
+ *  M140 P2 S70      → Em multi‐bed, aplica apenas cama 2 = 70 °C. Em single‐bed, ignora P e aplica cama 0 = 70 °C.
+ *  M190 P1 R90      → Em multi‐bed, aguarda cama 1 atingir 90 °C. Em single‐bed, ignora P e aguarda cama 0 = 90 °C.
  *
  * Observações:
  *  - Com PRINTJOB_TIMER_AUTOSTART ativado, M140 pode parar e M190 pode iniciar o cronômetro de impressão.
- *  - A cama selecionada pelo parâmetro P só tem efeito se ENABLE_MULTI_HEATED_BEDS estiver ativado.
- *    Caso contrário, todas as chamadas afetam a cama única padrão (bed 0).
+ *  - Se ENABLE_MULTI_HEATED_BEDS não estiver ativado, qualquer P<bed> é ignorado e atua sobre cama única (índice 0).
  */
-
 
 void GcodeSuite::M140_M190(const bool isM190) {
 
@@ -66,13 +36,17 @@ void GcodeSuite::M140_M190(const bool isM190) {
   bool got_temp = false;
   celsius_t temp = 0;
 
+  // Em multi‐bed, checa se usuário forneceu 'P'; em single‐bed, P é ignorado e 'bed' sempre = 0.
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    const uint8_t bed = parser.seen('P') ? parser.value_byte() : 0;
-    if (bed >= MULTI_BED_COUNT) return;
+    const bool specific_bed = parser.seen('P');
+    const uint8_t bed_index = specific_bed ? parser.value_byte() : 0;
+    if (specific_bed && bed_index >= MULTI_BED_COUNT) return;
   #else
-    constexpr uint8_t bed = 0;
+    constexpr bool specific_bed = false;
+    constexpr uint8_t bed_index = 0;
   #endif
 
+  // Se for preheat (I<index>), define a temperatura pela preset
   #if HAS_PREHEAT
     got_temp = parser.seenval('I');
     if (got_temp) {
@@ -81,32 +55,120 @@ void GcodeSuite::M140_M190(const bool isM190) {
     }
   #endif
 
+  // Se não veio I<index>, procura S<temp> (para M140 e M190‐Aquec.) ou R<temp> (para M190)
   bool no_wait_for_cooling = false;
   if (!got_temp) {
     no_wait_for_cooling = parser.seenval('S');
     got_temp = no_wait_for_cooling || (isM190 && parser.seenval('R'));
     if (got_temp) temp = parser.value_celsius();
   }
-
   if (!got_temp) return;
 
-  thermalManager.setTargetBed(bed, temp);
-  thermalManager.isHeatingBed(bed) ? LCD_MESSAGE(MSG_BED_HEATING) : LCD_MESSAGE(MSG_BED_COOLING);
+  // Se multi‐bed e sem P → alvo comum para todas. Se P ou single‐bed → alvo apenas para bed_index.
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    if (specific_bed) {
+      thermalManager.setTargetBed(bed_index, temp);
+    } else {
+      thermalManager.setAllBedsTarget(temp);
+    }
+  #else
+    thermalManager.setTargetBed(0, temp);
+  #endif
 
+  // Exibe mensagem “Bed Heating” ou “Bed Cooling” no LCD
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    if (specific_bed) {
+      thermalManager.isHeatingBed(bed_index)
+        ? LCD_MESSAGE(MSG_BED_HEATING)
+        : LCD_MESSAGE(MSG_BED_COOLING);
+    }
+    else {
+      // checa apenas cama 0 para decidir a mensagem, mas você poderia escolher outra lógica
+      thermalManager.isHeatingBed(0)
+        ? LCD_MESSAGE(MSG_BED_HEATING)
+        : LCD_MESSAGE(MSG_BED_COOLING);
+    }
+  #else
+    thermalManager.isHeatingBed(0)
+      ? LCD_MESSAGE(MSG_BED_HEATING)
+      : LCD_MESSAGE(MSG_BED_COOLING);
+  #endif
+
+  // Se PRINTJOB_TIMER_AUTOSTART estiver habilitado, atualiza cronômetro de impressão
   TERN_(PRINTJOB_TIMER_AUTOSTART, thermalManager.auto_job_check_timer(isM190, !isM190));
 
+  // Se for um M190 (aguarda atingimento do alvo), entra no laço de espera:
   if (isM190) {
-    thermalManager.wait_for_bed(bed, no_wait_for_cooling);
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      if (specific_bed) {
+        // Aguarda só a cama especificada
+        thermalManager.wait_for_bed(bed_index, no_wait_for_cooling);
+      } else {
+        // Aguarda todas as camas atingirem o alvo
+        for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+          thermalManager.wait_for_bed(b, no_wait_for_cooling);
+        }
+      }
+    #else
+      thermalManager.wait_for_bed(0, no_wait_for_cooling);
+    #endif
   }
+  // Se for apenas M140 (sem espera), definimos função de “status reset” para exibir o check‐mark
   else {
-    switch (bed) {
-  case 0: ui.set_status_reset_fn([]{ const celsius_t c = thermalManager.degTargetBed(0); return c < 30 || thermalManager.degBedNear(0, c); }); break;
-  case 1: ui.set_status_reset_fn([]{ const celsius_t c = thermalManager.degTargetBed(1); return c < 30 || thermalManager.degBedNear(1, c); }); break;
-  case 2: ui.set_status_reset_fn([]{ const celsius_t c = thermalManager.degTargetBed(2); return c < 30 || thermalManager.degBedNear(2, c); }); break;
-  case 3: ui.set_status_reset_fn([]{ const celsius_t c = thermalManager.degTargetBed(3); return c < 30 || thermalManager.degBedNear(3, c); }); break;
-  default: ui.set_status_reset_fn(nullptr); break;
-}
-
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      if (specific_bed) {
+        // Ola em “status reset” só quando a cama específica atingir o alvo
+        switch (bed_index) {
+          case 0:
+            ui.set_status_reset_fn([] {
+              const celsius_t c = thermalManager.degTargetBed(0);
+              return c < 30 || thermalManager.degBedNear(0, c);
+            });
+            break;
+          case 1:
+            ui.set_status_reset_fn([] {
+              const celsius_t c = thermalManager.degTargetBed(1);
+              return c < 30 || thermalManager.degBedNear(1, c);
+            });
+            break;
+          case 2:
+            ui.set_status_reset_fn([] {
+              const celsius_t c = thermalManager.degTargetBed(2);
+              return c < 30 || thermalManager.degBedNear(2, c);
+            });
+            break;
+          case 3:
+            ui.set_status_reset_fn([] {
+              const celsius_t c = thermalManager.degTargetBed(3);
+              return c < 30 || thermalManager.degBedNear(3, c);
+            });
+            break;
+          default:
+            ui.set_status_reset_fn(nullptr);
+            break;
+        }
+      }
+      else {
+        // Genérico: só sai do “aguardar status reset” quando todas as camas estiverem a menos de 30 °C
+        ui.set_status_reset_fn([] {
+          bool all_ok = true;
+          for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+            const celsius_t c = thermalManager.degTargetBed(b);
+            if (!(c < 30 || thermalManager.degBedNear(b, c))) {
+              all_ok = false;
+              break;
+            }
+          }
+          return all_ok;
+        });
+      }
+    #else
+      // Single‐bed: sai do “aguardar status reset” quando cama 0 < 30 °C ou já perto do alvo
+      ui.set_status_reset_fn([] {
+        const celsius_t c = thermalManager.degTargetBed(0);
+        return c < 30 || thermalManager.degBedNear(0, c);
+      });
+    #endif
   }
 }
 

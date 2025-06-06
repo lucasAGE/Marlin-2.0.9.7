@@ -74,9 +74,6 @@ typedef enum : int8_t {
   H_NONE = -128
 } heater_id_t;
 
-
-
-
 // PID storage
 typedef struct { float Kp, Ki, Kd;     } PID_t;
 typedef struct { float Kp, Ki, Kd, Kc; } PIDC_t;
@@ -130,64 +127,12 @@ hotend_pid_t;
    
 enum ADCSensorState : char {
   StartSampling,
+
+  //-----------------------
+  // Hotend / extrusor 0…7
+  //-----------------------
   #if HAS_TEMP_ADC_0
     PrepareTemp_0, MeasureTemp_0,
-#endif
-
-//#####################################################################################################
-//########################          TCC LUCAS          ################################################
-//#####################################################################################################
-/**
- * Mapeamento das funções de preparação e medição de temperatura das camas aquecidas.
- *
- * Quando o suporte a múltiplas camas aquecidas (ENABLE_MULTI_HEATED_BEDS) está habilitado,
- * o código define pares de funções específicas para cada cama individual (BED0 a BED3),
- * desde que haja um sensor ADC correspondente habilitado (HAS_TEMP_ADC_BEDx).
- *
- * - PrepareTemp_BEDx: função responsável por configurar ou iniciar a leitura de temperatura da cama x.
- * - MeasureTemp_BEDx: função responsável por realizar a conversão/medição da leitura da cama x.
- *
- * Caso o suporte a múltiplas camas esteja desativado, utiliza-se a versão única tradicional:
- * - PrepareTemp_BED / MeasureTemp_BED: funções para a cama aquecida padrão (única).
- *
- * Isso permite que o sistema de controle de temperatura funcione corretamente tanto para
- * configurações com uma cama quanto para sistemas multi-bed com controle individual por cama.
-*/
-
-
-#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-  #if HAS_TEMP_ADC_BED0
-       PrepareTemp_BED0, MeasureTemp_BED0,
-     #endif
-     #if HAS_TEMP_ADC_BED1
-        PrepareTemp_BED1, MeasureTemp_BED1,
-     #endif
-     #if HAS_TEMP_ADC_BED2
-        PrepareTemp_BED2, MeasureTemp_BED2,
-    #endif
-    #if HAS_TEMP_ADC_BED3
-       PrepareTemp_BED3, MeasureTemp_BED3,
-     #endif
-    #else
-      #if HAS_TEMP_ADC_BED
-        PrepareTemp_BED, MeasureTemp_BED,
-  #endif
-#endif
-
-  #if HAS_TEMP_ADC_CHAMBER
-    PrepareTemp_CHAMBER, MeasureTemp_CHAMBER,
-  #endif
-  #if HAS_TEMP_ADC_COOLER
-    PrepareTemp_COOLER, MeasureTemp_COOLER,
-  #endif
-  #if HAS_TEMP_ADC_PROBE
-    PrepareTemp_PROBE, MeasureTemp_PROBE,
-  #endif
-  #if HAS_TEMP_ADC_BOARD
-    PrepareTemp_BOARD, MeasureTemp_BOARD,
-  #endif
-  #if HAS_TEMP_ADC_REDUNDANT
-    PrepareTemp_REDUNDANT, MeasureTemp_REDUNDANT,
   #endif
   #if HAS_TEMP_ADC_1
     PrepareTemp_1, MeasureTemp_1,
@@ -210,6 +155,60 @@ enum ADCSensorState : char {
   #if HAS_TEMP_ADC_7
     PrepareTemp_7, MeasureTemp_7,
   #endif
+
+  //##################################################
+  //#########    TCC LUCAS – camas aquecidas    #######
+  //##################################################
+  //
+  // Se houver suporte a múltiplas camas (multi‐bed),
+  // definimos pares Prepare/Measure para cada cama em ADS1115.
+  // Caso contrário, usamos apenas PrepareTemp_BED / MeasureTemp_BED.
+  //
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+
+    #if HAS_TEMP_ADC_BED0
+      PrepareTemp_BED0, MeasureTemp_BED0,
+    #endif
+    #if HAS_TEMP_ADC_BED1
+      PrepareTemp_BED1, MeasureTemp_BED1,
+    #endif
+    #if HAS_TEMP_ADC_BED2
+      PrepareTemp_BED2, MeasureTemp_BED2,
+    #endif
+    #if HAS_TEMP_ADC_BED3
+      PrepareTemp_BED3, MeasureTemp_BED3,
+    #endif
+
+  #else  // fallback para single‐bed
+
+    #if HAS_TEMP_ADC_BED
+      PrepareTemp_BED, MeasureTemp_BED,
+    #endif
+
+  #endif // ENABLE_MULTI_HEATED_BEDS
+
+   //-----------------------------
+  // Chamber, Cooler, Probe, etc.
+  //-----------------------------
+  #if HAS_TEMP_ADC_CHAMBER
+    PrepareTemp_CHAMBER, MeasureTemp_CHAMBER,
+  #endif
+  #if HAS_TEMP_ADC_COOLER
+    PrepareTemp_COOLER, MeasureTemp_COOLER,
+  #endif
+  #if HAS_TEMP_ADC_PROBE
+    PrepareTemp_PROBE, MeasureTemp_PROBE,
+  #endif
+  #if HAS_TEMP_ADC_BOARD
+    PrepareTemp_BOARD, MeasureTemp_BOARD,
+  #endif
+  #if HAS_TEMP_ADC_REDUNDANT
+    PrepareTemp_REDUNDANT, MeasureTemp_REDUNDANT,
+  #endif
+
+  //-------------------------------
+  // Outros ADCs não‐temperatura
+  //-------------------------------
   #if HAS_JOY_ADC_X
     PrepareJoy_X, MeasureJoy_X,
   #endif
@@ -219,22 +218,25 @@ enum ADCSensorState : char {
   #if HAS_JOY_ADC_Z
     PrepareJoy_Z, MeasureJoy_Z,
   #endif
+
   #if ENABLED(FILAMENT_WIDTH_SENSOR)
     Prepare_FILWIDTH, Measure_FILWIDTH,
   #endif
+
   #if ENABLED(POWER_MONITOR_CURRENT)
-    Prepare_POWER_MONITOR_CURRENT,
-    Measure_POWER_MONITOR_CURRENT,
+    Prepare_POWER_MONITOR_CURRENT, Measure_POWER_MONITOR_CURRENT,
   #endif
   #if ENABLED(POWER_MONITOR_VOLTAGE)
-    Prepare_POWER_MONITOR_VOLTAGE,
-    Measure_POWER_MONITOR_VOLTAGE,
+    Prepare_POWER_MONITOR_VOLTAGE, Measure_POWER_MONITOR_VOLTAGE,
   #endif
+
   #if HAS_ADC_BUTTONS
     Prepare_ADC_KEY, Measure_ADC_KEY,
   #endif
-  SensorsReady, // Temperatures ready. Delay the next round of readings to let ADC pins settle.
-  StartupDelay  // Startup, delay initial temp reading a tiny bit so the hardware can settle
+
+  // Quando todas as leituras estiverem feitas:
+  SensorsReady,          // “Temperatures ready”; aguarda próximo ciclo de leitura.
+  StartupDelay           // “Startup”: dá um pequeno atraso antes da primeira leitura.
 };
 
 // Minimum number of Temperature::ISR loops between sensor readings.
@@ -462,10 +464,29 @@ class Temperature {
      *
      * Quando o suporte a múltiplas camas estiver desativado, a função se aplica à cama única padrão.
     */
+    #if ANY_THERMISTOR_IS(3000)
+        /** 
+         * Esta declaração faz correspondência ao `static ADS1115 tempSensor(0x48)` 
+         * que você define em temperature.cpp. 
+         * Sem ela, o compilador não sabe que existe um objeto chamado "tempSensor" 
+         * dentro de Temperature.
+         */
+        static ADS1115 tempSensor;
+      #endif
 
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        /**
+         * Esta linha diz ao compilador que a classe Temperature tem um membro
+         * `bedExpander` do tipo PCF857x. O construtor real (com 0x20, &Wire, false)
+         * você colocará em temperature.cpp exatamente como antes.
+         */
+        static PCF857x bedExpander;
+    #endif
 
 
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      static raw_adc_t analog_to_raw_bed(const celsius_t c);
+      static FSTR_P get_heater_label_fstr(const heater_id_t h);
       // Multi-bed: precisa do índice da cama
       bool wait_for_bed(const uint8_t bed,
                               const bool no_wait_for_cooling = true
@@ -473,6 +494,7 @@ class Temperature {
       );
 
      #else
+      static raw_adc_t analog_to_raw_bed(const celsius_t c);
       // Cama única (fall-back do modo original do Marlin)
       bool wait_for_bed(const bool no_wait_for_cooling = true
                               OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
@@ -506,14 +528,16 @@ class Temperature {
     #if HAS_HEATED_BED
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
         static bed_info_t temp_bed[MULTI_BED_COUNT];
-         static void init_beds();  // Inicializa ADS1115 e PCF857x para as camas
+        static void init_beds();  // Inicializa ADS1115 e PCF857x para as camas
+        static SoftPWM soft_pwm_bed[MULTI_BED_COUNT];
+        static void read_bed_temperatures_ads1115();
+        static void update_bed_pwm_pcf8574();
       #else
         static bed_info_t temp_bed;
+        static SoftPWM soft_pwm_bed;
       #endif
     #endif
-
-     
-    
+      
     #if HAS_TEMP_PROBE
       static probe_info_t temp_probe;
     #endif
@@ -880,7 +904,7 @@ class Temperature {
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
         static void init_bed_temp_limits();
         static celsius_float_t analog_to_celsius_bed(const raw_adc_t raw, const uint8_t bed);
-        static raw_adc_t           readBedRaw(const uint8_t bed);
+        static raw_adc_t       readBedRaw(const uint8_t bed);
       #else
         static celsius_float_t analog_to_celsius_bed(const raw_adc_t raw);
         // não há readBedRaw() no single-bed
@@ -1142,7 +1166,12 @@ class Temperature {
           temp_bed[bed].target = _MIN(celsius, BED_MAX_TARGET);
           start_watching_bed(bed);
         }
+
+        static FSTR_P get_bed_label_fstr(const heater_id_t h);
+
         static void wait_for_bed_heating(const uint8_t bed);
+
+        static void setAllBedsTarget(const celsius_t celsius);
 
         static void manage_heated_bed(const uint8_t bed, const millis_t &ms);
 
@@ -1179,7 +1208,6 @@ class Temperature {
       #endif // ENABLE_MULTI_HEATED_BEDS
 
     #endif // HAS_HEATED_BED
-
 
 
     #if HAS_TEMP_PROBE
