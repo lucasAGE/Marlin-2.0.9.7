@@ -49,10 +49,17 @@
 #define E_NAME TERN_(HAS_MULTI_HOTEND, e)
 
 
+
 //#####################################################################################################
 //########################          TCC LUCAS          ################################################
 //#####################################################################################################
 // Identificadores de elementos. Valores positivos são hotends. Valores negativos são outros aquecedores ou resfriadores.
+
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      #include <Wire.h>
+      #include "ADS1x15.h"
+      #include "PCF8574.h"   
+#endif
 typedef enum : int8_t {
   H_REDUNDANT = HID_REDUNDANT,
   H_COOLER    = HID_COOLER,
@@ -61,10 +68,10 @@ typedef enum : int8_t {
   H_CHAMBER   = HID_CHAMBER,
 
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    H_BED0 = HID_BED0,  // cama 1
-    H_BED1 = HID_BED1,  // cama 2
-    H_BED2 = HID_BED2,  // cama 3
-    H_BED3 = HID_BED3,  // cama 4
+    H_BED0 = HID_BED0,  // -21
+    H_BED1 = HID_BED1,  // -22
+    H_BED2 = HID_BED2,  // -23
+    H_BED3 = HID_BED3,  // -24
     H_BED  = H_BED0,    // alias legado para cama 1
   #else
     H_BED  = HID_BED,
@@ -128,9 +135,6 @@ hotend_pid_t;
 enum ADCSensorState : char {
   StartSampling,
 
-  //-----------------------
-  // Hotend / extrusor 0…7
-  //-----------------------
   #if HAS_TEMP_ADC_0
     PrepareTemp_0, MeasureTemp_0,
   #endif
@@ -464,42 +468,7 @@ class Temperature {
      *
      * Quando o suporte a múltiplas camas estiver desativado, a função se aplica à cama única padrão.
     */
-    #if ANY_THERMISTOR_IS(3000)
-        /** 
-         * Esta declaração faz correspondência ao `static ADS1115 tempSensor(0x48)` 
-         * que você define em temperature.cpp. 
-         * Sem ela, o compilador não sabe que existe um objeto chamado "tempSensor" 
-         * dentro de Temperature.
-         */
-        static ADS1115 tempSensor;
-      #endif
-
-      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-        /**
-         * Esta linha diz ao compilador que a classe Temperature tem um membro
-         * `bedExpander` do tipo PCF857x. O construtor real (com 0x20, &Wire, false)
-         * você colocará em temperature.cpp exatamente como antes.
-         */
-        static PCF857x bedExpander;
-    #endif
-
-
-    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-      static raw_adc_t analog_to_raw_bed(const celsius_t c);
-      static FSTR_P get_heater_label_fstr(const heater_id_t h);
-      // Multi-bed: precisa do índice da cama
-      bool wait_for_bed(const uint8_t bed,
-                              const bool no_wait_for_cooling = true
-                              OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
-      );
-
-     #else
-      static raw_adc_t analog_to_raw_bed(const celsius_t c);
-      // Cama única (fall-back do modo original do Marlin)
-      bool wait_for_bed(const bool no_wait_for_cooling = true
-                              OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
-      );
-    #endif
+     
 
     #if HAS_HOTEND
       static hotend_info_t temp_hotend[HOTENDS];
@@ -525,16 +494,36 @@ class Temperature {
    * Isso permite que o mesmo código trabalhe com uma ou várias camas, de forma modular.
    */
 
+
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      static ADS1115 bedADS;
+      static PCF8574 bedPCF;
+      static raw_adc_t analog_to_raw_bed(const celsius_t c);
+      static FSTR_P get_heater_label_fstr(const heater_id_t h);
+      // Multi-bed: precisa do índice da cama
+      bool wait_for_bed(const uint8_t bed,
+                              const bool no_wait_for_cooling = true
+                              OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+      );
+
+     #else
+      static raw_adc_t analog_to_raw_bed(const celsius_t c);
+      // Cama única (fall-back do modo original do Marlin)
+      bool wait_for_bed(const bool no_wait_for_cooling = true
+                              OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+      );
+    #endif
+
     #if HAS_HEATED_BED
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
         static bed_info_t temp_bed[MULTI_BED_COUNT];
-        static void init_beds();  // Inicializa ADS1115 e PCF857x para as camas
-        static SoftPWM soft_pwm_bed[MULTI_BED_COUNT];
+        static void init();  // Inicializa ADS1115 e PCF857x para as camas
         static void read_bed_temperatures_ads1115();
         static void update_bed_pwm_pcf8574();
+        static FSTR_P get_bed_label_fstr(const heater_id_t h);
       #else
         static bed_info_t temp_bed;
-        static SoftPWM soft_pwm_bed;
+        
       #endif
     #endif
       
@@ -690,9 +679,9 @@ class Temperature {
           if (heater_id >= H_BED && heater_id < H_BED + MULTI_BED_COUNT)
             return (IdleIndex)(IDLE_INDEX_BED0 + (heater_id - H_BED));
         #elif HAS_HEATED_BED
-          if (heater_id == H_BED) return IDLE_INDEX_BED;
+          if (heater_id == H_BED) return IDLE_INDEX_BED0;
       #endif
-        return IDLE_INDEX_BED;
+        return IDLE_INDEX_BED0;
       }
 
       // Hotends e redundantes seguem o padrão original (E0…En)
@@ -762,18 +751,35 @@ class Temperature {
     */
 
     #if HAS_HEATED_BED
-      // Watchdog de runaway, um por cama
+
+      // Watchdog de runaway, um por cama (ou um só se single-bed)
       #if ENABLED(WATCH_BED)
-        static bed_watch_t watch_bed[MULTI_BED_COUNT];
+        #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+          static bed_watch_t watch_bed[MULTI_BED_COUNT];
+        #else
+          static bed_watch_t watch_bed;
+        #endif
       #endif
 
       // Próximo check bang–bang, um por cama (se não usar PID por cama)
-      IF_DISABLED(PIDTEMPBED, static millis_t next_bed_check_ms[MULTI_BED_COUNT]);
+      IF_DISABLED(PIDTEMPBED,
+        #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+          static millis_t next_bed_check_ms[MULTI_BED_COUNT];
+        #else
+          static millis_t next_bed_check_ms;
+        #endif
+      );
 
-      // Valores raw mínimos e máximos por cama
-      static raw_adc_t mintemp_raw_BED[MULTI_BED_COUNT];
-      static raw_adc_t maxtemp_raw_BED[MULTI_BED_COUNT];
-    #endif
+      // Valores raw mínimos e máximos (array ou escalar)
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        static raw_adc_t mintemp_raw_BED[MULTI_BED_COUNT];
+        static raw_adc_t maxtemp_raw_BED[MULTI_BED_COUNT];
+      #else
+        static raw_adc_t mintemp_raw_BED;
+        static raw_adc_t maxtemp_raw_BED;
+      #endif
+
+    #endif // HAS_HEATED_BED
 
 
     #if HAS_HEATED_CHAMBER
@@ -902,7 +908,6 @@ class Temperature {
 
     #if HAS_HEATED_BED
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-        static void init_bed_temp_limits();
         static celsius_float_t analog_to_celsius_bed(const raw_adc_t raw, const uint8_t bed);
         static raw_adc_t       readBedRaw(const uint8_t bed);
       #else
@@ -1128,7 +1133,7 @@ class Temperature {
     */
 
       
-    #if HAS_HEATED_BED
+    #if HAS_HEATED_BED   
 
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
 
@@ -1167,8 +1172,6 @@ class Temperature {
           start_watching_bed(bed);
         }
 
-        static FSTR_P get_bed_label_fstr(const heater_id_t h);
-
         static void wait_for_bed_heating(const uint8_t bed);
 
         static void setAllBedsTarget(const celsius_t celsius);
@@ -1176,6 +1179,7 @@ class Temperature {
         static void manage_heated_bed(const uint8_t bed, const millis_t &ms);
 
       #else // single-bed legacy
+          
 
         #if ENABLED(SHOW_TEMP_ADC_VALUES)
           static raw_adc_t rawBedTemp()  { return temp_bed.getraw(); }
@@ -1205,7 +1209,7 @@ class Temperature {
         static void wait_for_bed_heating();
         static void manage_heated_bed(const millis_t &ms);
 
-      #endif // ENABLE_MULTI_HEATED_BEDS
+      #endif // ELSE ENABLE_MULTI_HEATED_BEDS
 
     #endif // HAS_HEATED_BED
 
@@ -1339,7 +1343,7 @@ class Temperature {
         }
       #endif
 
-    #endif
+    #endif // #if HAS_PID_HEATING
 
     #if ENABLED(MPCTEMP)
       void MPC_autotune();
@@ -1354,11 +1358,9 @@ class Temperature {
       /**
        * Reseta o timer de idle para o hotend `e` e reinicia o watchdog.
        */
-      static void reset_hotend_idle_timer(const uint8_t e) {
-        // Mapeia H_E0+e → índice no array heater_idle[]
-        const IdleIndex idx = idle_index_for_id(H_E0 + e);
-        heater_idle[idx].reset();
-        start_watching_hotend(e);
+      static void reset_hotend_idle_timer(const uint8_t E_NAME) {
+        heater_idle[HOTEND_INDEX].reset();
+        start_watching_hotend(HOTEND_INDEX);
       }
 
       #if HAS_HEATED_BED
@@ -1377,7 +1379,7 @@ class Temperature {
        * Funcionamento:
        * - Converte o índice da cama (`bed`) no identificador global do aquecedor (`H_BED + bed`);
        * - Usa `idle_index_for_id(...)` para obter o índice correspondente no array `heater_idle[]`;
-       * - Reseta o temporizador `heater_idle[idx]`;
+       * - Reseta o temporizador `heater_idle[IDLE_INDEX_BED]`;
        * - Reinicia o watchdog da cama (caso WATCH_BED esteja habilitado).
        */
         #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
@@ -1386,8 +1388,7 @@ class Temperature {
            */
           static void reset_bed_idle_timer(const uint8_t bed) {
             // Mapeia H_BED+bed → índice no array heater_idle[]
-            const IdleIndex idx = idle_index_for_id(H_BED + bed);
-            heater_idle[idx].reset();
+            heater_idle[IDLE_INDEX_BED].reset();
             start_watching_bed(bed);
           }
         #else
@@ -1395,11 +1396,10 @@ class Temperature {
            * Reseta o timer de idle para a cama única.
            */
           static void reset_bed_idle_timer() {
-            const IdleIndex idx = idle_index_for_id(H_BED);
-            heater_idle[idx].reset();
-            start_watching_bed();
-          }
-        #endif
+          heater_idle[IDLE_INDEX_BED].reset();
+          start_watching_bed();
+        }
+        #endif // ENABLE_MULTI_HEATED_BEDS
 
       #endif // HAS_HEATED_BED
 
@@ -1505,7 +1505,7 @@ class Temperature {
           #undef _RUNAWAY_IND_E
         #endif
 
-         //#####################################################################################################
+        //#####################################################################################################
          //########################          TCC LUCAS          ################################################
          //#####################################################################################################
          /**
@@ -1524,16 +1524,16 @@ class Temperature {
          *
          * Esses índices são utilizados para controlar e monitorar o tempo máximo permitido
          * para que a temperatura alcance o setpoint. Caso contrário, ocorre erro de runaway.
-         */
-        #if ENABLED(THERMAL_PROTECTION_BED)
-          #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-            #define _RUNAWAY_IND_B(N) , RUNAWAY_IND_BED##N
-            REPEAT(MULTI_BED_COUNT, _RUNAWAY_IND_B)
-            #undef _RUNAWAY_IND_B
-          #else
-            , RUNAWAY_IND_BED
-          #endif
+        */
+        
+        #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+          #define _RUNAWAY_IND_B(N) , RUNAWAY_IND_BED##N
+          REPEAT(MULTI_BED_COUNT, _RUNAWAY_IND_B)
+          #undef _RUNAWAY_IND_B
+        #else
+          OPTARG(THERMAL_PROTECTION_BED, RUNAWAY_IND_BED)
         #endif
+        
 
 
         // Chamber, Cooler…
@@ -1548,14 +1548,12 @@ class Temperature {
        * spondente em tr_state_machine[].
        */
       static RunawayIndex runaway_index_for_id(const int8_t heater_id) {
-        #if ENABLED(THERMAL_PROTECTION_HOTENDS)
-          if (heater_id >= H_E0 && heater_id < H_E0 + HOTENDS)
-            return RunawayIndex(RUNAWAY_IND_E0 + (heater_id - H_E0));
-        #endif
-
-         //#####################################################################################################
-         //########################          TCC LUCAS          ################################################
-         //#####################################################################################################
+        TERN_(THERMAL_PROTECTION_CHAMBER, if (heater_id == H_CHAMBER) return RUNAWAY_IND_CHAMBER);
+        TERN_(THERMAL_PROTECTION_COOLER,  if (heater_id == H_COOLER)  return RUNAWAY_IND_COOLER);
+       
+        //#####################################################################################################
+        //########################          TCC LUCAS          ################################################
+        //#####################################################################################################
         /**
          * Define os índices de proteção térmica (runaway) para as camas aquecidas.
          *
@@ -1578,29 +1576,18 @@ class Temperature {
          * Se a temperatura não alcançar o setpoint dentro do tempo limite, ocorre erro de runaway
          * para a cama correspondente (RUNAWAY_IND_BED<n> ou RUNAWAY_IND_BED).
          */
-        #if ENABLED(THERMAL_PROTECTION_BED)
-          #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-             // Se o heater_id corresponder a H_BED0..H_BED{MULTI_BED_COUNT-1}
-            if (heater_id >= H_BED0 && heater_id < H_BED0 + MULTI_BED_COUNT) {
-               return RunawayIndex(RUNAWAY_IND_BED0 + (heater_id - H_BED0));
+        
+        #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+          // Se o heater_id corresponder a H_BED0..H_BED{MULTI_BED_COUNT-1}
+          if (heater_id >= H_BED0 && heater_id < H_BED0 + MULTI_BED_COUNT) {
+             return RunawayIndex(RUNAWAY_IND_BED0 + (heater_id - H_BED0));
+          }
+           #else
+           TERN_(THERMAL_PROTECTION_BED,     if (heater_id == H_BED)     return RUNAWAY_IND_BED);
             }
-            #else
-             // Cama única: só H_BED
-             if (heater_id == H_BED) {
-               return RUNAWAY_IND_BED;
-             }
-          #endif
         #endif
-
-
-        #if ENABLED(THERMAL_PROTECTION_CHAMBER)
-          if (heater_id == H_CHAMBER) return RUNAWAY_IND_CHAMBER;
-        #endif
-        #if ENABLED(THERMAL_PROTECTION_COOLER)
-          if (heater_id == H_COOLER)  return RUNAWAY_IND_COOLER;
-        #endif
-
-        return RunawayIndex(-1);
+        
+        return (RunawayIndex)_MAX(heater_id, 0);
       }
 
       enum TRState : char {

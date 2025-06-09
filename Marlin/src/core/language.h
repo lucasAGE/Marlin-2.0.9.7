@@ -238,6 +238,12 @@
 #define STR_MPC_TEMPERATURE_ERROR           "Temperature error"
 
 #define STR_HEATER_BED                      "bed"
+#define STR_HEATER_BED_0                    "bed 1"
+#define STR_HEATER_BED_1                    "bed 2"
+#define STR_HEATER_BED_2                    "bed 3"
+#define STR_HEATER_BED_3                    "bed 4"
+
+
 #define STR_HEATER_CHAMBER                  "chamber"
 #define STR_COOLER                          "cooler"
 #define STR_MOTHERBOARD                     "motherboard"

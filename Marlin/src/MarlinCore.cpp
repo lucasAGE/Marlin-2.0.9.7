@@ -1155,11 +1155,10 @@ void setup() {
 
  
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    Wire.begin();
     Temperature::init_beds();  // Inicializa sensores e limites das camas
     Temperature::init_bed_temp_limits();  // ✅ Agora permitido
   #endif
-
-
 
   #if HAS_MULTI_SERIAL && !HAS_ETHERNET
     #ifndef BAUDRATE_2

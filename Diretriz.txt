@@ -305,7 +305,7 @@ Controle de aquecimento
 for i in 0…MULTI_BED_COUNT–1:
 needOn = temp_bed[i].temp < temp_bed[i].target
 if needOn != temp_bed[i].soft_pwm_amount:
-bedExpander.writeBit(BED0_PCF_BIT+i, needOn)
+bedPCF.writeBit(BED0_PCF_BIT+i, needOn)
 temp_bed[i].soft_pwm_amount = needOn
 
 Limpeza de código legado
@@ -518,7 +518,7 @@ temperature.cpp
 Conferir a lógica de leitura do ADS1115 (readBedRaw()), a coleta no ISR (ou rotina periódica) e a conversão raw→°C para cada cama.
 
 MarlinCore.cpp
-Revisar onde são feitas as chamadas tempSensor.begin(...) e bedExpander.begin(...) no setup, além de onde (ou como) deveria vir a inicialização das rotinas de temperatura.
+Revisar onde são feitas as chamadas bedADS.begin(...) e bedPCF.begin(...) no setup, além de onde (ou como) deveria vir a inicialização das rotinas de temperatura.
 
 ads1115.h
 Analisar a interface do driver ADS1115 (métodos begin(), readRaw(), readVoltage()) para garantir que está de acordo com o uso em temperature.cpp.

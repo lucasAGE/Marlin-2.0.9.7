@@ -133,8 +133,6 @@
   #define HAS_TEMP_ADC_BED1 1
   #define HAS_TEMP_ADC_BED2 1
   #define HAS_TEMP_ADC_BED3 1
-  #define ADS1115_ADDRESS 0x48
-  #define PCF8574_ADDRESS 0x20
   #else
   #undef HAS_TEMP_ADC_BED0
   #undef HAS_TEMP_ADC_BED1
