@@ -92,9 +92,19 @@ void Temperature::setAllBedsTarget(const celsius_t celsius) {
 void Temperature::read_bed_temperatures_ads1115() {
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
-      int16_t raw = bedADS.readADC(i);                // lê canal i do ADS1115
-      temp_bed[i].raw     = raw;
-      temp_bed[i].celsius = analog_to_celsius_bed(raw);
+      // 1) Leia raw16 do ADS
+      int16_t raw16 = bedADS.readADC(i);
+      // 2) Converta para positivo
+      uint16_t mag = raw16 < 0 ? -raw16 : raw16;
+      // 3) Mapeie de 16 bits (–32768…+32767) para 10 bits (0…1023)
+      uint16_t raw10 = mag >> 5;            // >>5 equivale a /32
+      if (raw10 > 1023) raw10 = 1023;       // teto
+
+      // 4) Armazene raw10 (não mais raw16)
+      temp_bed[i].raw = raw10;
+
+      // 5) Converta usando a tabela de 10 bits
+      temp_bed[i].celsius = analog_to_celsius_bed(raw10);
     }
   #endif
 }
@@ -2179,7 +2189,7 @@ void Temperature::task() {
    */
   TERN_(FILAMENT_WIDTH_SENSOR, filwidth.update_volumetric());
 
-
+ // Handle Bed Temp Errors, Heating Watch, etc.
    //#####################################################################################################
     //########################          TCC LUCAS          ################################################
     //#####################################################################################################
@@ -2192,8 +2202,6 @@ void Temperature::task() {
   #elif HAS_HEATED_BED
     manage_heated_bed(ms);
   #endif
-
-
 
   // Handle Heated Chamber Temp Errors, Heating Watch, etc.
   TERN_(HAS_HEATED_CHAMBER, manage_heated_chamber(ms));
