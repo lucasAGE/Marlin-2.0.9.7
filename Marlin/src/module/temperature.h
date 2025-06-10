@@ -517,7 +517,7 @@ class Temperature {
     #if HAS_HEATED_BED
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
         static bed_info_t temp_bed[MULTI_BED_COUNT];
-        static void init();  // Inicializa ADS1115 e PCF857x para as camas
+        static void initpcf8574ads1115beds();  // Inicializa ADS1115 e PCF857x para as camas
         static void read_bed_temperatures_ads1115();
         static void update_bed_pwm_pcf8574();
         static FSTR_P get_bed_label_fstr(const heater_id_t h);

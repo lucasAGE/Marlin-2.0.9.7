@@ -52,13 +52,12 @@
   constexpr uint8_t BED2_PCF_BIT = 2;
   constexpr uint8_t BED3_PCF_BIT = 3;
   
-#endif
 
 //==============================================================================
 // Setup de sensores
 //==============================================================================
-void Temperature::init() {
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+void Temperature::initpcf8574ads1115beds() {
+  
     // Inicializa I²C e dispositivos externos
     Wire.begin();
     bedADS.begin();
@@ -70,58 +69,55 @@ void Temperature::init() {
         maxtemp_raw_BED[b]    = TEMP_SENSOR_BED_RAW_HI_TEMP;
         TERN_(WATCH_BED, watch_bed[b].reset());
         IF_DISABLED(PIDTEMPBED, next_bed_check_ms[b] = 0;);
-      }
-
-  #endif
+      }  
 }
 
 void Temperature::setAllBedsTarget(const celsius_t celsius) {
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    // Aplique o mesmo setpoint a cada cama de 0 até MULTI_BED_COUNT-1
+      // Aplique o mesmo setpoint a cada cama de 0 até MULTI_BED_COUNT-1
     for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
       TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
       temp_bed[b].target = _MIN(celsius, BED_MAX_TARGET);
       TERN_(WATCH_BED, watch_bed[b].restart(temp_bed[b].celsius, temp_bed[b].target));
-    }
-  #endif
+    }  
 }
 
 //==============================================================================
-// Função auxiliar: leitura das temperaturas via ADS1115
+// Converte raw16 do ADS → raw10 (módulo e down-sampling)
+//==============================================================================
+static inline uint16_t raw16_to_raw10(int16_t raw16) {
+  uint16_t mag = raw16 < 0 ? -raw16 : raw16;
+  uint16_t raw10 = mag >> 5;        // reduz 16→10 bits
+  return raw10 > 1023 ? 1023 : raw10;
+}
+
+//==============================================================================
+// Leitura das temperaturas via ADS1115
 //==============================================================================
 void Temperature::read_bed_temperatures_ads1115() {
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
       // 1) Leia raw16 do ADS
       int16_t raw16 = bedADS.readADC(i);
-      // 2) Converta para positivo
-      uint16_t mag = raw16 < 0 ? -raw16 : raw16;
-      // 3) Mapeie de 16 bits (–32768…+32767) para 10 bits (0…1023)
-      uint16_t raw10 = mag >> 5;            // >>5 equivale a /32
-      if (raw10 > 1023) raw10 = 1023;       // teto
 
-      // 4) Armazene raw10 (não mais raw16)
-      temp_bed[i].raw = raw10;
+      // 2) Converta para raw10 (0…1023), eliminando o sinal
+      uint16_t raw10 = raw16_to_raw10(raw16);
 
-      // 5) Converta usando a tabela de 10 bits
-      temp_bed[i].celsius = analog_to_celsius_bed(raw10);
+      // 3) Armazene e converta para °C
+      temp_bed[i].raw     = raw10;
+      temp_bed[i].celsius = analog_to_celsius_bed(raw10,i);
     }
-  #endif
 }
 
 //==============================================================================
 // Função auxiliar: atualização dos MOSFETs via PCF8574
 //==============================================================================
 void Temperature::update_bed_pwm_pcf8574() {
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
       const uint8_t mask = 1 << i;                    // bit i do expander
       bool on = soft_pwm_bed[i].add(mask, /*amount=*/1);
       bedPCF.write(mask, on ? HIGH : LOW);            // usa bit mask em vez de índice
     }
-  #endif
-}
-
+ }
+#endif
 
 #if EITHER(HAS_COOLER, LASER_COOLANT_FLOW_METER)
   #include "../feature/cooler.h"
@@ -2362,7 +2358,7 @@ void Temperature::task() {
     // Return degrees C (up to 999, as the LCD only displays 3 digits)
     return _MIN(value + THERMISTOR_ABS_ZERO_C, 999);
   }
-#endif
+#endif //HAS_USER_THERMISTORS
 
 #if HAS_HOTEND
   // Derived from RepRap FiveD extruder::getTemperature()
@@ -2502,28 +2498,18 @@ void Temperature::task() {
      * Fallback single-bed: chama a versão multi-bed com bed=0
      */
     celsius_float_t Temperature::analog_to_celsius_bed(const raw_adc_t raw) {
-      #if TEMP_SENSOR_BED_IS_CUSTOM
-        return user_thermistor_to_deg_c(CTI_BED, raw);
-      #elif TEMP_SENSOR_IS_MAX_TC(BED)
-        #if TEMP_SENSOR_BED_IS_MAX31865
-          return TERN(LIB_INTERNAL_MAX31865,
-            max31865_BED.temperature(raw),
-            max31865_BED.temperature(MAX31865_SENSOR_OHMS_BED, MAX31865_CALIBRATION_OHMS_BED)
-          );
-        #else
-          return (int16_t)raw * 0.25f;
-        #endif
-      #elif TEMP_SENSOR_BED_IS_THERMISTOR
-        SCAN_THERMISTOR_TABLE(TEMPTABLE_BED, TEMPTABLE_BED_LEN);
-      #elif TEMP_SENSOR_BED_IS_AD595
-        return temp_ad595(raw);
-      #elif TEMP_SENSOR_BED_IS_AD8495
-        return temp_ad8495(raw);
-      #else
-        UNUSED(raw);
-        return 0;
-      #endif
-    }
+    #if TEMP_SENSOR_BED_IS_CUSTOM
+      return user_thermistor_to_deg_c(CTI_BED, raw);
+    #elif TEMP_SENSOR_BED_IS_THERMISTOR
+      SCAN_THERMISTOR_TABLE(TEMPTABLE_BED, TEMPTABLE_BED_LEN);
+    #elif TEMP_SENSOR_BED_IS_AD595
+      return TEMP_AD595(raw);
+    #elif TEMP_SENSOR_BED_IS_AD8495
+      return TEMP_AD8495(raw);
+    #else
+      UNUSED(raw);
+      return 0;
+    #endif
   #endif // ENABLED(ENABLE_MULTI_HEATED_BEDS)
 
 #endif // HAS_HEATED_BED
@@ -2624,11 +2610,9 @@ void Temperature::task() {
 #endif // HAS_TEMP_REDUNDANT
 
 
- //#####################################################################################################
-    //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
-
-
+//#####################################################################################################
+//########################          TCC LUCAS          ################################################
+//#####################################################################################################
 /**
  * Convert the raw sensor readings into actual Celsius temperatures and
  * validate raw temperatures. Bad readings generate min/maxtemp errors.
@@ -2641,49 +2625,34 @@ void Temperature::task() {
  * being set by the interrupt so that this method is not called for over
  * 4 seconds then something has gone afoul and the machine will be reset.
  */
-void Temperature::updateTemperaturesFromRawValues() {
-  hal.watchdog_refresh(); // Reset porque raw_temps_ready veio da ISR
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  void Temperature::updateTemperaturesFromRawValues() {
+  
 
-  // ─── Leitura e conversão das camas ────────────────────────────────
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    // Multi-bed: lê cada canal ADS1115 e converte
-    for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
-      temp_bed[b].setraw(readBedRaw(b));
-      temp_bed[b].celsius = analog_to_celsius_bed(temp_bed[b].getraw(), b);
-    }
+
   #elif HAS_HEATED_BED
-    // Single-bed: leitura ADC interna
-    raw_adc_t raw = analog_read_bed();
-    temp_bed.setraw(raw);
-    temp_bed.celsius = analog_to_celsius_bed(raw);
-  #endif
+    void Temperature::updateTemperaturesFromRawValues() {
 
-  // ─── Hotends (permanece igual) ────────────────────────────────────
+  hal.watchdog_refresh(); // Reset because raw_temps_ready was set by the interrupt
+
   TERN_(TEMP_SENSOR_0_IS_MAX_TC, temp_hotend[0].setraw(READ_MAX_TC(0)));
   TERN_(TEMP_SENSOR_1_IS_MAX_TC, temp_hotend[1].setraw(READ_MAX_TC(1)));
-  TERN_(TEMP_SENSOR_REDUNDANT_IS_MAX_TC,
-        temp_redundant.setraw(READ_MAX_TC(
-          HEATER_ID(TEMP_SENSOR_REDUNDANT_SOURCE)
-        )));
+  TERN_(TEMP_SENSOR_REDUNDANT_IS_MAX_TC, temp_redundant.setraw(READ_MAX_TC(HEATER_ID(TEMP_SENSOR_REDUNDANT_SOURCE))));
 
   #if HAS_HOTEND
-    HOTEND_LOOP() temp_hotend[e].celsius = analog_to_celsius_hotend(
-      temp_hotend[e].getraw(), e
-    );
+    HOTEND_LOOP() temp_hotend[e].celsius = analog_to_celsius_hotend(temp_hotend[e].getraw(), e);
   #endif
 
-  // ─── Outros sensores (mantém o TERN_) ─────────────────────────────
-  TERN_(HAS_TEMP_CHAMBER, temp_chamber.celsius = analog_to_celsius_chamber(temp_chamber.getraw()));
-  TERN_(HAS_TEMP_COOLER,  temp_cooler.celsius  = analog_to_celsius_cooler(temp_cooler.getraw()));
-  TERN_(HAS_TEMP_PROBE,   temp_probe.celsius   = analog_to_celsius_probe(temp_probe.getraw()));
-  TERN_(HAS_TEMP_BOARD,   temp_board.celsius   = analog_to_celsius_board(temp_board.getraw()));
-  TERN_(HAS_TEMP_REDUNDANT,
-        temp_redundant.celsius = analog_to_celsius_redundant(temp_redundant.getraw()));
+  TERN_(HAS_HEATED_BED,     temp_bed.celsius       = analog_to_celsius_bed(temp_bed.getraw()));
+  TERN_(HAS_TEMP_CHAMBER,   temp_chamber.celsius   = analog_to_celsius_chamber(temp_chamber.getraw()));
+  TERN_(HAS_TEMP_COOLER,    temp_cooler.celsius    = analog_to_celsius_cooler(temp_cooler.getraw()));
+  TERN_(HAS_TEMP_PROBE,     temp_probe.celsius     = analog_to_celsius_probe(temp_probe.getraw()));
+  TERN_(HAS_TEMP_BOARD,     temp_board.celsius     = analog_to_celsius_board(temp_board.getraw()));
+  TERN_(HAS_TEMP_REDUNDANT, temp_redundant.celsius = analog_to_celsius_redundant(temp_redundant.getraw()));
 
   TERN_(FILAMENT_WIDTH_SENSOR, filwidth.update_measured_mm());
   TERN_(HAS_POWER_MONITOR,     power_monitor.capture_values());
 
-  // ─── Verificações de erro nos hotends (igual) ────────────────────
   #if HAS_HOTEND
     static constexpr int8_t temp_dir[] = {
       #if TEMP_SENSOR_IS_ANY_MAX_TC(0)
@@ -2703,45 +2672,37 @@ void Temperature::updateTemperaturesFromRawValues() {
         #endif
       #endif
     };
+
     LOOP_L_N(e, COUNT(temp_dir)) {
       const raw_adc_t r = temp_hotend[e].getraw();
       const bool neg = temp_dir[e] < 0, pos = temp_dir[e] > 0;
       if ((neg && r < temp_range[e].raw_max) || (pos && r > temp_range[e].raw_max))
         max_temp_error((heater_id_t)e);
+
       const bool heater_on = temp_hotend[e].target > 0;
-      if (heater_on && ((neg && r > temp_range[e].raw_min) || (pos && r < temp_range[e].raw_min)))
-        min_temp_error((heater_id_t)e);
+      if (heater_on && ((neg && r > temp_range[e].raw_min) || (pos && r < temp_range[e].raw_min))) {
+        #if MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED > 1
+          if (++consecutive_low_temperature_error[e] >= MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED)
+        #endif
+            min_temp_error((heater_id_t)e);
+      }
+      #if MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED > 1
+        else
+          consecutive_low_temperature_error[e] = 0;
+      #endif
     }
+
   #endif // HAS_HOTEND
 
-  // ─── Proteção térmica das camas ───────────────────────────────────
-  #define TP_CMP(S, A, B) (TEMPDIR(S) < 0 ? ((A)<(B)) : ((A)>(B)))
-
+  #define TP_CMP(S,A,B) (TEMPDIR(S) < 0 ? ((A)<(B)) : ((A)>(B)))
   #if ENABLED(THERMAL_PROTECTION_BED)
-    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-      // Checa cada cama separadamente
-      for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
-        const heater_id_t hid = heater_id_t(H_BED0 + b);
-        const raw_adc_t raw    = temp_bed[b].getraw();
-        // Máx  
-        if (TP_CMP(BED, raw, maxtemp_raw_BED[b])) 
-          max_temp_error(hid);
-        // Min  
-        if (temp_bed[b].target > 0 && TP_CMP(BED, mintemp_raw_BED[b], raw))
-          min_temp_error(hid);
-      }
-    #else
-      // Single-bed
-      if (TP_CMP(BED, temp_bed.raw, maxtemp_raw_BED)) max_temp_error(H_BED);
-      if (temp_bed.target > 0 && TP_CMP(BED, mintemp_raw_BED, temp_bed.raw))
-        min_temp_error(H_BED);
-    #endif
+    if (TP_CMP(BED, temp_bed.getraw(), maxtemp_raw_BED)) max_temp_error(H_BED);
+    if (temp_bed.target > 0 && TP_CMP(BED, mintemp_raw_BED, temp_bed.getraw())) min_temp_error(H_BED);
   #endif
 
   #if BOTH(HAS_HEATED_CHAMBER, THERMAL_PROTECTION_CHAMBER)
     if (TP_CMP(CHAMBER, temp_chamber.getraw(), maxtemp_raw_CHAMBER)) max_temp_error(H_CHAMBER);
-    if (temp_chamber.target > 0 && TP_CMP(CHAMBER, mintemp_raw_CHAMBER, temp_chamber.getraw()))
-      min_temp_error(H_CHAMBER);
+    if (temp_chamber.target > 0 && TP_CMP(CHAMBER, mintemp_raw_CHAMBER, temp_chamber.getraw())) min_temp_error(H_CHAMBER);
   #endif
 
   #if BOTH(HAS_COOLER, THERMAL_PROTECTION_COOLER)
@@ -2753,9 +2714,10 @@ void Temperature::updateTemperaturesFromRawValues() {
     if (TP_CMP(BOARD, temp_board.getraw(), maxtemp_raw_BOARD)) max_temp_error(H_BOARD);
     if (TP_CMP(BOARD, mintemp_raw_BOARD, temp_board.getraw())) min_temp_error(H_BOARD);
   #endif
-
   #undef TP_CMP
-}
+
+} // Temperature::updateTemperaturesFromRawValues Single-bed
+#endif
 
 
 /**
@@ -2781,7 +2743,7 @@ void Temperature::init() {
   //======================= Multi-Bed / ADS1115 + PCF8574 =======================
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     // Faz init completo: ADS1115, PCF8574 e limites de raw para cada cama
-    init_beds();  // internamente já chama bedPCF.begin()
+    initpcf8574ads1115beds();
     // Garante que todas as saídas das camas comecem desligadas
     bedPCF.write8(0);
   #endif
