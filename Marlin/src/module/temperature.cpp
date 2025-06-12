@@ -63,13 +63,17 @@ void Temperature::initpcf8574ads1115beds() {
     bedADS.begin();
     bedPCF.begin();
 
-    // Inicializa limites brutos e watchdogs para cada cama
-      for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
-        mintemp_raw_BED[b]    = TEMP_SENSOR_BED_RAW_LO_TEMP;
-        maxtemp_raw_BED[b]    = TEMP_SENSOR_BED_RAW_HI_TEMP;
-        TERN_(WATCH_BED, watch_bed[b].reset());
-        IF_DISABLED(PIDTEMPBED, next_bed_check_ms[b] = 0;);
-      }  
+    // Inicializa limites brutos e mantém watchdogs zerados
+    for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+    mintemp_raw_BED[b] = TEMP_SENSOR_BED_RAW_LO_TEMP;
+    maxtemp_raw_BED[b] = TEMP_SENSOR_BED_RAW_HI_TEMP;
+
+    // NÃO reinicia o watchdog aqui — ele já está com target=0 e next_ms=0
+    // Se quiser forçar a zero, descomente a linha abaixo:
+    // TERN_(WATCH_BED, watch_bed[b].restart(0, 0));
+
+    IF_DISABLED(PIDTEMPBED, next_bed_check_ms[b] = 0;);
+  }
 }
 
 void Temperature::setAllBedsTarget(const celsius_t celsius) {
@@ -102,22 +106,12 @@ void Temperature::read_bed_temperatures_ads1115() {
       uint16_t raw10 = raw16_to_raw10(raw16);
 
       // 3) Armazene e converta para °C
-      temp_bed[i].raw     = raw10;
-      temp_bed[i].celsius = analog_to_celsius_bed(raw10);
+      temp_bed[i].setraw(raw10);
+      temp_bed[i].celsius = analog_to_celsius_bed(temp_bed[i].getraw());
     }
 }
 
-//==============================================================================
-// Função auxiliar: atualização dos MOSFETs via PCF8574
-//==============================================================================
-void Temperature::update_bed_pwm_pcf8574() {
-    for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
-      const uint8_t mask = 1 << i;                    // bit i do expander
-      const bool on = soft_pwm_bed[i].add(mask, temp_bed[i].soft_pwm_amount);
-      bedPCF.write(mask, on ? HIGH : LOW);            // usa bit mask em vez de índice
-    }
- }
-#endif
+
 
 #if EITHER(HAS_COOLER, LASER_COOLANT_FLOW_METER)
   #include "../feature/cooler.h"
@@ -297,45 +291,15 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
  */
 
 #if HAS_HEATED_BED
-
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-
-    //==============================================================================  
-    // Retorna “Bed” ou “BedN” para cada cama quando multi-bed estiver ativo  
-    //==============================================================================
-    FSTR_P Temperature::get_bed_label_fstr(const heater_id_t h) {
-      const int index = h - H_BED0;
-      if (index == 0) return GET_TEXT_F(MSG_BED);            // cama 0 = “Bed”
-      if (index > 0 && index < MULTI_BED_COUNT) {
-        static char label[6];                                 // "Bed3\0"
-        sprintf_P(label, PSTR("Bed%d"), index);
-        return label;
-      }
-      return F("");                                           // fallback vazio
-    }
-
-  #else
-
-    // Single-bed: macro original sem alteração
-    #define _BED_FSTR(h) ((h) == H_BED ? GET_TEXT_F(MSG_BED) :)
-
-  #endif  // ENABLE_MULTI_HEATED_BEDS
-
+  #define _BED_FSTR(h) (h) == H_BED ? GET_TEXT_F(MSG_BED) :
 #else
-
-  // Sem cama aquecida: macro vazio
   #define _BED_FSTR(h)
-
-#endif  // HAS_HEATED_BED
-
-
-
+#endif
 #if HAS_HEATED_CHAMBER
-  #define _CHAMBER_FSTR(h) ((h) == H_CHAMBER ? GET_TEXT_F(MSG_CHAMBER) : nullptr)
+  #define _CHAMBER_FSTR(h) (h) == H_CHAMBER ? GET_TEXT_F(MSG_CHAMBER) :
 #else
-  #define _CHAMBER_FSTR(h) nullptr
-#endif // HAS_HEATED_CHAMBER
-
+  #define _CHAMBER_FSTR(h)
+#endif
 #if HAS_COOLER
   #define _COOLER_FSTR(h) (h) == H_COOLER ? GET_TEXT_F(MSG_COOLER) :
 #else
@@ -1758,7 +1722,7 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
     // Heater ID correspondente
     const heater_id_t hid     = heater_id_t(H_BED0 + bed);
     const uint8_t runaway_idx = RUNAWAY_IND_BED0 + bed;
-    const IdleIndex idle_idx = idle_index_for_id(hid);
+    const Temperature::IdleIndex idle_idx = idle_index_for_id(hid);
     
     // 1) Proteção de temperatura máxima
     #if ENABLED(THERMAL_PROTECTION_BED)
@@ -1810,19 +1774,24 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
 
     // 4) Idle‐timer
     #if ENABLED(HEATER_IDLE_HANDLER)
-        if (heater_idle[idle_idx].timed_out) {
+      if (heater_idle[idle_idx].timed_out) {
         temp_bed[bed].soft_pwm_amount = 0;
-        if (DISABLED(PIDTEMPBED))
-        const uint8_t mask = 1 << bed;
-        bedPCF.write(mask, LOW);
+        #if DISABLED(PIDTEMPBED)
+          const uint8_t mask = 1 << bed;
+          bedPCF.write(mask, LOW);
         #endif
         break;
-        }
-        #endif
-    {
-     #if ENABLED(PIDTEMPBED) //não habilitado nessa versão!
-          temp_bed.soft_pwm_amount = WITHIN(temp_bed.celsius, BED_MINTEMP, BED_MAXTEMP) ? (int)get_pid_output_bed() >> 1 : 0;
-        ##else
+      }
+    #endif
+    
+    //PIDTEMPBED NÃO IMPLEMENTADO PARA MULTI-BEDS!!
+    #if ENABLED(PIDTEMPBED)
+      temp_bed[bed].soft_pwm_amount = WITHIN(
+        temp_bed[bed].celsius,
+        BED_MINTEMP,
+        BED_MAXTEMP
+      ) ? (int)(get_pid_output_bed()) >> 1 : 0;
+    #else
         // Bang–bang with optional limit switching
         if (WITHIN(temp_bed[bed].celsius, BED_MINTEMP, BED_MAXTEMP)) {
           #if ENABLED(BED_LIMIT_SWITCHING)
@@ -1924,9 +1893,7 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
 
   #endif // ENABLE_MULTI_HEATED_BEDS
 }
-
-#endif // HAS_HEATED_BED
-
+#endif
 
 
 
@@ -2635,10 +2602,10 @@ void Temperature::updateTemperaturesFromRawValues() {
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
       for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
         // raw já foi preenchido por read_bed_temperatures_ads1115()
-        temp_bed[b].celsius = analog_to_celsius_bed( temp_bed[b].raw );
+        temp_bed[b].celsius = analog_to_celsius_bed(temp_bed[b].getraw());
       }
     #else
-      temp_bed.celsius = analog_to_celsius_bed( temp_bed.getraw() );
+      temp_bed.celsius = analog_to_celsius_bed(temp_bed.getraw() );
     #endif
   #endif
 
@@ -2703,11 +2670,11 @@ void Temperature::updateTemperaturesFromRawValues() {
       for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
         auto &tb = temp_bed[b];
         // superaquecimento?
-        if (TP_CMP(BED, tb.getraw(), maxtemp_raw_BED))
-          max_temp_error(H_BED + b);  
+        if (TP_CMP(BED, tb.getraw(), maxtemp_raw_BED[b])) 
+          max_temp_error(hid);  
         // subtemperatura somente se alvo > 0
-        if (tb.target > 0 && TP_CMP(BED, mintemp_raw_BED, tb.getraw()))
-          min_temp_error(H_BED + b);
+        if (tb.target > 0 && TP_CMP(BED, mintemp_raw_BED[b], tb.getraw()))
+          min_temp_error(hid);
       }
     #else
       // Fluxo original para cama única
@@ -3321,7 +3288,7 @@ void Temperature::disable_all_heaters() {
     #if HAS_HOTEND
       HOTEND_LOOP() if (degTargetHotend(e) > (EXTRUDE_MINTEMP) / 2) return true;
     #endif
-    return TERN0(HAS_HEATED_BED, degTargetBed() > BED_MINTEMP)
+    return TERN0(HAS_HEATED_BED, degTargetBed(0) > BED_MINTEMP)
         || TERN0(HAS_HEATED_CHAMBER, degTargetChamber() > CHAMBER_MINTEMP);
   }
 
@@ -3687,6 +3654,17 @@ public:
     }
   #endif
 };
+
+#if HAS_HEATED_BED
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      // Multi-bed: arrays para cada cama
+      SoftPWM Temperature::soft_pwm_bed[MULTI_BED_COUNT];
+  #else
+      SoftPWM Temperature::soft_pwm_bed;
+  #endif // ENABLE_MULTI_HEATED_BEDS
+#endif // HAS_HEATED_BED
+
+
 
 /**
  * Handle various ~1kHz tasks associated with temperature
@@ -4414,7 +4392,7 @@ void Temperature::print_heater_states(
         HEATER_BED_INDEX[b],               // H_BED0, H_BED1, …
         temp_bed[b].celsius,               // temperatura atual
         temp_bed[b].target                  // temperatura alvo
-        OPTARG(SHOW_TEMP_ADC_VALUES, temp_bed[b].raw) // raw ADC, se habilitado
+        OPTARG(SHOW_TEMP_ADC_VALUES, temp_bed[b].getraw()) // raw ADC, se habilitado
       );
     }
   #else

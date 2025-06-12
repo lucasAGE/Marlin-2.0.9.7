@@ -500,6 +500,7 @@ class Temperature {
       static PCF8574 bedPCF;
       static raw_adc_t analog_to_raw_bed(const celsius_t c);
       static FSTR_P get_heater_label_fstr(const heater_id_t h);
+      
       // Multi-bed: precisa do índice da cama
       bool wait_for_bed(const uint8_t bed,
                               const bool no_wait_for_cooling = true
@@ -520,10 +521,8 @@ class Temperature {
         static void initpcf8574ads1115beds();  // Inicializa ADS1115 e PCF857x para as camas
         static void read_bed_temperatures_ads1115();
         static void update_bed_pwm_pcf8574();
-        static FSTR_P get_bed_label_fstr(const heater_id_t h);
-      #else
+        #else
         static bed_info_t temp_bed;
-        
       #endif
     #endif
       
@@ -642,13 +641,7 @@ class Temperature {
      * A macro REPEAT é usada para gerar automaticamente os índices baseando-se no número de camas.
      * A macro interna _IDLE_INDEX_B(N) cria a sequência de forma dinâmica.
      */
-      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-        #define _IDLE_INDEX_B(N) , IDLE_INDEX_BED##N
-        REPEAT(MULTI_BED_COUNT, _IDLE_INDEX_B)
-        #undef _IDLE_INDEX_B
-      #elif HAS_HEATED_BED
-        , IDLE_INDEX_BED
-      #endif
+      OPTARG(HAS_HEATED_BED, IDLE_INDEX_BED)
 
       , NR_HEATER_IDLE
       };
@@ -676,10 +669,10 @@ class Temperature {
 
       static IdleIndex idle_index_for_id(const int8_t heater_id) {
         #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-          if (heater_id >= H_BED && heater_id < H_BED + MULTI_BED_COUNT)
-            return (IdleIndex)(IDLE_INDEX_BED0 + (heater_id - H_BED));
-        #elif HAS_HEATED_BED
-          if (heater_id == H_BED) return IDLE_INDEX_BED0;
+          if (heater_id >= H_BED0 && heater_id < H_BED0 + MULTI_BED_COUNT)
+            return (IdleIndex)(IDLE_INDEX_BED0 + (heater_id - H_BED0));
+        #elif ENABLED(HAS_HEATED_BED)
+          if (heater_id == H_BED0) return IDLE_INDEX_BED0;
       #endif
         return IDLE_INDEX_BED0;
       }
@@ -907,13 +900,7 @@ class Temperature {
      */
 
     #if HAS_HEATED_BED
-      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-        static celsius_float_t analog_to_celsius_bed(const raw_adc_t raw, const uint8_t bed);
-        static raw_adc_t       readBedRaw(const uint8_t bed);
-      #else
-        static celsius_float_t analog_to_celsius_bed(const raw_adc_t raw);
-        // não há readBedRaw() no single-bed
-      #endif
+              static celsius_float_t analog_to_celsius_bed(const raw_adc_t raw);             
     #endif
 
 
@@ -1377,7 +1364,7 @@ class Temperature {
        * - `bed`: índice da cama (0 até MULTI_BED_COUNT - 1).
        *
        * Funcionamento:
-       * - Converte o índice da cama (`bed`) no identificador global do aquecedor (`H_BED + bed`);
+       * - Converte o índice da cama (`bed`) no identificador global do aquecedor (`hided`);
        * - Usa `idle_index_for_id(...)` para obter o índice correspondente no array `heater_idle[]`;
        * - Reseta o temporizador `heater_idle[IDLE_INDEX_BED]`;
        * - Reinicia o watchdog da cama (caso WATCH_BED esteja habilitado).
