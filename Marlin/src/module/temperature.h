@@ -637,28 +637,24 @@ class Temperature {
       //#####################################################################################################
       //########################          TCC LUCAS          ################################################
       //#####################################################################################################
-     /**
-     * Define os índices de tempo ocioso (idle) associados às camas aquecidas,
-     * usados no controle de desligamento automático por inatividade (thermal idle timeout).
-     *
-     * - Se ENABLE_MULTI_HEATED_BEDS estiver ativado, define um índice distinto para cada cama:
-     *     IDLE_INDEX_BED0, IDLE_INDEX_BED1, ..., até o número definido por MULTI_BED_COUNT.
-     *   Isso permite aplicar timeouts individuais a cada cama aquecida.
-     *
-     * - Se estiver usando apenas uma cama (modo tradicional), define apenas:
-     *     IDLE_INDEX_BED
-     *
-     * A macro REPEAT é usada para gerar automaticamente os índices baseando-se no número de camas.
-     * A macro interna _IDLE_INDEX_B(N) cria a sequência de forma dinâmica.
-     */
-      OPTARG(HAS_HEATED_BED, IDLE_INDEX_BED)
+     
+    
+        #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+          // Multi-bed: gera IDLE_INDEX_BED0…BEDn-1
+          #define _IDLE_INDEX_BED(N) , IDLE_INDEX_BED##N
+          REPEAT(MULTI_BED_COUNT, _IDLE_INDEX_BED)
+          #undef _IDLE_INDEX_BED
+          #elif HAS_HEATED_BED
+          // Cama única
+          , IDLE_INDEX_BED
+        #endif
 
-      , NR_HEATER_IDLE
+        , NR_HEATER_IDLE
       };
 
-    //#####################################################################################################
-    //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
+      //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
     
       /**
      * Retorna o índice de inatividade (IdleIndex) correspondente a um determinado ID de aquecedor.
@@ -678,19 +674,17 @@ class Temperature {
      */
 
       static IdleIndex idle_index_for_id(const int8_t heater_id) {
-        #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-          if (heater_id >= H_BED0 && heater_id < H_BED0 + MULTI_BED_COUNT)
-            return (IdleIndex)(IDLE_INDEX_BED0 + (heater_id - H_BED0));
-        #elif ENABLED(HAS_HEATED_BED)
-          if (heater_id == H_BED0) return IDLE_INDEX_BED0;
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        // Se for um H_BEDx, devolve IDLE_INDEX_BEDx
+        if (heater_id >= H_BED0 && heater_id < H_BED0 + MULTI_BED_COUNT)
+          return IdleIndex(IDLE_INDEX_BED0 + (heater_id - H_BED0));
+      #elif HAS_HEATED_BED
+        // Se for o único H_BED, devolve IDLE_INDEX_BED
+        if (heater_id == H_BED) return IDLE_INDEX_BED;
       #endif
-        return IDLE_INDEX_BED0;
+        // Hotends e redundantes: usam valor >=0
+        return IdleIndex(_MAX(heater_id, 0));
       }
-
-      // Hotends e redundantes seguem o padrão original (E0…En)
-      return (IdleIndex)_MAX(heater_id, 0);
-      }
-
 
       // Array de handlers de idle (um por hotend + um por cada cama)
       static heater_idle_t heater_idle[NR_HEATER_IDLE];
