@@ -40,96 +40,95 @@
 //########################          TCC LUCAS          ################################################
 //#####################################################################################################
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-  #include <Wire.h>
-  #include "ADS1X15.h"
-  #include "PCF8574.h"
+    #include <Wire.h>
+    #include "ADS1X15.h"
+    #include "PCF8574.h"
 
-  ADS1115 Temperature::bedADS(ADS1115_ADDRESS, &Wire);                // Leitura dos termistores via ADS1115
-  PCF8574 Temperature::bedPCF(PCF8574_ADDRESS, &Wire); // Acionamento dos MOSFETs via PCF8574
+    ADS1115 Temperature::bedADS(ADS1115_ADDRESS, &Wire);                // Leitura dos termistores via ADS1115
+    PCF8574 Temperature::bedPCF(PCF8574_ADDRESS, &Wire); // Acionamento dos MOSFETs via PCF8574
 
-  constexpr uint8_t BED0_PCF_BIT = 0;
-  constexpr uint8_t BED1_PCF_BIT = 1;
-  constexpr uint8_t BED2_PCF_BIT = 2;
-  constexpr uint8_t BED3_PCF_BIT = 3;
-  
+    constexpr uint8_t BED0_PCF_BIT = 0;
+    constexpr uint8_t BED1_PCF_BIT = 1;
+    constexpr uint8_t BED2_PCF_BIT = 2;
+    constexpr uint8_t BED3_PCF_BIT = 3;
+    
 
-//==============================================================================
-// Setup de sensores
-//==============================================================================
-void Temperature::initpcf8574ads1115beds() {
-  
-    // Inicializa I²C e dispositivos externos
-    Wire.begin();
-    bedADS.begin();
-    bedPCF.begin();
+  //==============================================================================
+  // Setup de sensores
+  //==============================================================================
+  void Temperature::initpcf8574ads1115beds() {
+    
+      // Inicializa I²C e dispositivos externos
+      Wire.begin();
+      bedADS.begin();
+      bedPCF.begin();
 
-    // Inicializa limites brutos e mantém watchdogs zerados
-    for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
-    mintemp_raw_BED[b] = TEMP_SENSOR_BED_RAW_LO_TEMP;
-    maxtemp_raw_BED[b] = TEMP_SENSOR_BED_RAW_HI_TEMP;
+      // Inicializa limites brutos e mantém watchdogs zerados
+      for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+      mintemp_raw_BED[b] = TEMP_SENSOR_BED_RAW_LO_TEMP;
+      maxtemp_raw_BED[b] = TEMP_SENSOR_BED_RAW_HI_TEMP;
 
-    // NÃO reinicia o watchdog aqui — ele já está com target=0 e next_ms=0
-    // Se quiser forçar a zero, descomente a linha abaixo:
-    // TERN_(WATCH_BED, watch_bed[b].restart(0, 0));
+      // NÃO reinicia o watchdog aqui — ele já está com target=0 e next_ms=0
+      // Se quiser forçar a zero, descomente a linha abaixo:
+      // TERN_(WATCH_BED, watch_bed[b].restart(0, 0));
 
-    IF_DISABLED(PIDTEMPBED, next_bed_check_ms[b] = 0;);
-  }
-}
-
-void Temperature::setAllBedsTarget(const celsius_t celsius) {
-      // Aplique o mesmo setpoint a cada cama de 0 até MULTI_BED_COUNT-1
-    for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
-      TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
-      temp_bed[b].target = _MIN(celsius, BED_MAX_TARGET);
-      TERN_(WATCH_BED, watch_bed[b].restart(temp_bed[b].celsius, temp_bed[b].target));
-    }  
-}
-
-//==============================================================================
-// Converte raw16 do ADS → raw10 (módulo e down-sampling)
-//==============================================================================
-static inline uint16_t raw16_to_raw10(int16_t raw16) {
-  uint16_t mag = raw16 < 0 ? -raw16 : raw16;
-  uint16_t raw10 = mag >> 5;        // reduz 16→10 bits
-  return raw10 > 1023 ? 1023 : raw10;
-}
-
-//==============================================================================
-// Leitura das temperaturas via ADS1115
-//==============================================================================
-void Temperature::read_bed_temperatures_ads1115() {
-    for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
-      // 1) Leia raw16 do ADS
-      int16_t raw16 = bedADS.readADC(i);
-
-      // 2) Converta para raw10 (0…1023), eliminando o sinal
-      uint16_t raw10 = raw16_to_raw10(raw16);
-
-      // 3) Armazene e converta para °C
-      temp_bed[i].setraw(raw10);
-      temp_bed[i].celsius = analog_to_celsius_bed(temp_bed[i].getraw());
-    }
-}
-
-
-//==============================================================================
-// Controle das Camas pelo PCF8574
-//==============================================================================
-void Temperature::update_bed_pwm_pcf8574() {
-  static uint8_t pwm_step = 0;
-  pwm_step = (pwm_step + 1) & ((1 << SOFT_PWM_SCALE) - 1); // ex.: se SOFT_PWM_SCALE==8, 0…255
-
-  uint8_t state = 0;
-  for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
-    // Liga a saída se soft_pwm_amount[b] > pwm_step
-    if (temp_bed[b].soft_pwm_amount > pwm_step) {
-      state |= _BV(BED0_PCF_BIT + b);
+      IF_DISABLED(PIDTEMPBED, next_bed_check_ms[b] = 0;);
     }
   }
-  bedPCF.write8(state);
-}
+
+  void Temperature::setAllBedsTarget(const celsius_t celsius) {
+        // Aplique o mesmo setpoint a cada cama de 0 até MULTI_BED_COUNT-1
+      for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+        TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
+        temp_bed[b].target = _MIN(celsius, BED_MAX_TARGET);
+        TERN_(WATCH_BED, watch_bed[b].restart(temp_bed[b].celsius, temp_bed[b].target));
+      }  
+  }
+
+  //==============================================================================
+  // Converte raw16 do ADS → raw10 (módulo e down-sampling)
+  //==============================================================================
+  static inline uint16_t raw16_to_raw10(int16_t raw16) {
+    uint16_t mag = raw16 < 0 ? -raw16 : raw16;
+    uint16_t raw10 = mag >> 5;        // reduz 16→10 bits
+    return raw10 > 1023 ? 1023 : raw10;
+  }
+
+  //==============================================================================
+  // Leitura das temperaturas via ADS1115
+  //==============================================================================
+  void Temperature::read_bed_temperatures_ads1115() {
+      for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
+        // 1) Leia raw16 do ADS
+        int16_t raw16 = bedADS.readADC(i);
+
+        // 2) Converta para raw10 (0…1023), eliminando o sinal
+        uint16_t raw10 = raw16_to_raw10(raw16);
+
+        // 3) Armazene e converta para °C
+        temp_bed[i].setraw(raw10);
+        temp_bed[i].celsius = analog_to_celsius_bed(temp_bed[i].getraw());
+      }
+  }
 
 
+  //==============================================================================
+  // Controle das Camas pelo PCF8574
+  //==============================================================================
+  void Temperature::update_bed_pwm_pcf8574() {
+    static uint8_t pwm_step = 0;
+    pwm_step = (pwm_step + 1) & ((1 << SOFT_PWM_SCALE) - 1); // ex.: se SOFT_PWM_SCALE==8, 0…255
+
+    uint8_t state = 0;
+    for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+      // Liga a saída se soft_pwm_amount[b] > pwm_step
+      if (temp_bed[b].soft_pwm_amount > pwm_step) {
+        state |= _BV(BED0_PCF_BIT + b);
+      }
+    }
+    bedPCF.write8(state);
+  }
+#endif
 
 #if EITHER(HAS_COOLER, LASER_COOLANT_FLOW_METER)
   #include "../feature/cooler.h"
