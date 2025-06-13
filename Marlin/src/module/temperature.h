@@ -41,13 +41,21 @@
   #include "../feature/fancheck.h"
 #endif
 
-#ifndef SOFT_PWM_SCALE
-  #define SOFT_PWM_SCALE 0
-#endif
+//#define ERR_INCLUDE_TEMP
 
-#define HOTEND_INDEX TERN(HAS_MULTI_HOTEND, e, 0)
+#define HOTEND_INDEX TERN0(HAS_MULTI_HOTEND, e)
 #define E_NAME TERN_(HAS_MULTI_HOTEND, e)
 
+#if HAS_FAN
+  #if NUM_REDUNDANT_FANS
+    #define FAN_IS_REDUNDANT(Q) WITHIN(Q, REDUNDANT_PART_COOLING_FAN, REDUNDANT_PART_COOLING_FAN + NUM_REDUNDANT_FANS - 1)
+  #else
+    #define FAN_IS_REDUNDANT(Q) false
+  #endif
+  #define FAN_IS_M106ABLE(Q) (HAS_FAN##Q && !FAN_IS_REDUNDANT(Q))
+#else
+  #define FAN_IS_M106ABLE(Q) false
+#endif
 
 
 //#####################################################################################################
@@ -495,36 +503,38 @@ class Temperature {
    */
 
 
+    // Leituras e labels sempre existem, independentemente de multi-bed
+    static raw_adc_t analog_to_raw_bed(const celsius_t c);
+    static FSTR_P  get_heater_label_fstr(const heater_id_t h);
+
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      // I²C e periferais só no modo multi-bed
       static ADS1115 bedADS;
       static PCF8574 bedPCF;
-      static raw_adc_t analog_to_raw_bed(const celsius_t c);
-      static FSTR_P get_heater_label_fstr(const heater_id_t h);
-      
-      // Multi-bed: precisa do índice da cama
+
+      // wait_for_bed esperando índice
       bool wait_for_bed(const uint8_t bed,
-                              const bool no_wait_for_cooling = true
-                              OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+                        const bool no_wait_for_cooling = true
+                        OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
       );
 
-     #else
-      static raw_adc_t analog_to_raw_bed(const celsius_t c);
-      // Cama única (fall-back do modo original do Marlin)
+      // N camas
+      static bed_info_t temp_bed[MULTI_BED_COUNT];
+      static void initpcf8574ads1115beds();
+      static void read_bed_temperatures_ads1115();
+      static void update_bed_pwm_pcf8574();
+      static void setBedTarget(const uint8_t bed, const celsius_t celsius);
+      static void setAllBedsTarget(const celsius_t celsius);
+
+    #else
+      // modo single-bed: mesma função, sem índice
       bool wait_for_bed(const bool no_wait_for_cooling = true
-                              OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+                        OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
       );
-    #endif
 
-    #if HAS_HEATED_BED
-      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-        static bed_info_t temp_bed[MULTI_BED_COUNT];
-        static void initpcf8574ads1115beds();  // Inicializa ADS1115 e PCF857x para as camas
-        static void read_bed_temperatures_ads1115();
-        static void update_bed_pwm_pcf8574();
-        #else
-        static bed_info_t temp_bed;
-      #endif
-    #endif
+      // única cama
+      static bed_info_t temp_bed;
+    #endif  // ENABLE_MULTI_HEATED_BEDS
       
     #if HAS_TEMP_PROBE
       static probe_info_t temp_probe;
@@ -1160,8 +1170,6 @@ class Temperature {
         }
 
         static void wait_for_bed_heating(const uint8_t bed);
-
-        static void setAllBedsTarget(const celsius_t celsius);
 
         static void manage_heated_bed(const uint8_t bed, const millis_t &ms);
 

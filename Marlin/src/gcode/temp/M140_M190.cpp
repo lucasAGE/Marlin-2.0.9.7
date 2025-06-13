@@ -36,6 +36,10 @@ void GcodeSuite::M140_M190(const bool isM190) {
   bool got_temp = false;
   celsius_t temp = 0;
 
+  //#####################################################################################################
+  //########################          TCC LUCAS          ################################################
+  //#####################################################################################################
+
   // Em multi‐bed, checa se usuário forneceu 'P'; em single‐bed, P é ignorado e 'bed' sempre = 0.
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     const bool specific_bed = parser.seen('P');
@@ -64,6 +68,10 @@ void GcodeSuite::M140_M190(const bool isM190) {
   }
   if (!got_temp) return;
 
+
+  //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
   // Se multi‐bed e sem P → alvo comum para todas. Se P ou single‐bed → alvo apenas para bed_index.
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     if (specific_bed) {

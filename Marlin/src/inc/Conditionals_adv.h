@@ -140,6 +140,11 @@
   #undef HAS_TEMP_ADC_BED3 
 #endif
 
+
+  //##################################################
+  //#########    TCC LUCAS – camas aquecidas    #######
+  //##################################################
+
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
 
   #define HID_BED0     -21
@@ -150,9 +155,6 @@
 #else
   #define HID_BED      -1
 #endif
-
-
-
 
 #define HID_E0         0
 #define HID_E1         1

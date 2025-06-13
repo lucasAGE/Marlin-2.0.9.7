@@ -128,7 +128,18 @@
     }
     bedPCF.write8(state);
   }
+
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  /// Ajusta o target de uma única cama.
+  void Temperature::setBedTarget(const uint8_t bed, const celsius_t celsius) {
+    if (bed >= MULTI_BED_COUNT) return;
+    TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
+    temp_bed[bed].target = _MIN(celsius, BED_MAX_TARGET);
+    TERN_(WATCH_BED, watch_bed[bed].restart(temp_bed[bed].celsius, temp_bed[bed].target));
+  }
 #endif
+
+#endif //ENABLED(ENABLE_MULTI_HEATED_BEDS)
 
 #if EITHER(HAS_COOLER, LASER_COOLANT_FLOW_METER)
   #include "../feature/cooler.h"
