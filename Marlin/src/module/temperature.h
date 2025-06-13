@@ -1374,9 +1374,9 @@ class Temperature {
            * Reseta o timer de idle para a cama `bed` (0…MULTI_BED_COUNT-1) e reinicia o watchdog.
            */
           static void reset_bed_idle_timer(const uint8_t bed) {
-            // Mapeia H_BED+bed → índice no array heater_idle[]
-            heater_idle[IDLE_INDEX_BED].reset();
-            start_watching_bed(bed);
+            const IdleIndex idx = IdleIndex(IDLE_INDEX_BED0 + bed);
+            heater_idle[idx].reset();
+            watch_bed[bed].restart(degBed(bed), degTargetBed(bed));
           }
         #else
           /**

@@ -112,6 +112,24 @@ void Temperature::read_bed_temperatures_ads1115() {
 }
 
 
+//==============================================================================
+// Controle das Camas pelo PCF8574
+//==============================================================================
+void Temperature::update_bed_pwm_pcf8574() {
+  static uint8_t pwm_step = 0;
+  pwm_step = (pwm_step + 1) & ((1 << SOFT_PWM_SCALE) - 1); // ex.: se SOFT_PWM_SCALE==8, 0…255
+
+  uint8_t state = 0;
+  for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+    // Liga a saída se soft_pwm_amount[b] > pwm_step
+    if (temp_bed[b].soft_pwm_amount > pwm_step) {
+      state |= _BV(BED0_PCF_BIT + b);
+    }
+  }
+  bedPCF.write8(state);
+}
+
+
 
 #if EITHER(HAS_COOLER, LASER_COOLANT_FLOW_METER)
   #include "../feature/cooler.h"
@@ -3578,6 +3596,9 @@ void Temperature::readings_ready() {
   // Update raw values only if they're not already set.
   if (!raw_temps_ready) {
     update_raw_temperatures();
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      read_bed_temperatures_ads1115();
+    #endif
     raw_temps_ready = true;
   }
 
@@ -3591,9 +3612,14 @@ void Temperature::readings_ready() {
   //#####################################################################################################
   //########################          TCC LUCAS          ################################################
   //#####################################################################################################
-  #if DISABLED(ENABLE_MULTI_HEATED_BEDS)
-    // Single-bed: zera o acumulador do ADC interno da cama
-    TERN_(HAS_HEATED_BED,   temp_bed.reset());
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    // Multi-bed: reseta cada acumulador de ADC
+    for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+      temp_bed[b].reset();
+    }
+  #else
+    // Single-bed: zera o acumulador da cama única
+    TERN_(HAS_HEATED_BED, temp_bed.reset());
   #endif
 
   TERN_(HAS_TEMP_CHAMBER,   temp_chamber.reset());
@@ -3655,17 +3681,6 @@ public:
   #endif
 };
 
-#if HAS_HEATED_BED
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-      // Multi-bed: arrays para cada cama
-      SoftPWM Temperature::soft_pwm_bed[MULTI_BED_COUNT];
-  #else
-      SoftPWM Temperature::soft_pwm_bed;
-  #endif // ENABLE_MULTI_HEATED_BEDS
-#endif // HAS_HEATED_BED
-
-
-
 /**
  * Handle various ~1kHz tasks associated with temperature
  *  - Check laser safety timeout
@@ -3706,6 +3721,7 @@ void Temperature::isr() {
     //########################          TCC LUCAS          ################################################
     //#####################################################################################################
 
+    
   #if HAS_HEATED_BED
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
       static SoftPWM soft_pwm_bed[MULTI_BED_COUNT];
@@ -3727,12 +3743,7 @@ void Temperature::isr() {
   #endif
 
   #define WRITE_FAN(n, v) WRITE(FAN##n##_PIN, (v) ^ FAN_INVERTING)
-
-
-    //#####################################################################################################
-    //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
-
+  
   #if DISABLED(SLOW_PWM_HEATERS)
 
     #if ANY(HAS_HOTEND, HAS_HEATED_BED, HAS_HEATED_CHAMBER, HAS_COOLER, FAN_SOFT_PWM)
@@ -4308,7 +4319,7 @@ void Temperature::isr() {
     const_celsius_float_t t,
     OPTARG(SHOW_TEMP_ADC_VALUES, const float r)
   ) {
-    char k = '?';
+    char k;
 
     // Primeiro, escolhe a letra de prefixo (k) de acordo com o tipo de heater_id
     switch (e) {
