@@ -652,10 +652,7 @@ class Temperature {
         , NR_HEATER_IDLE
       };
 
-      //#####################################################################################################
-      //########################          TCC LUCAS          ################################################
-      //#####################################################################################################
-    
+      
       /**
      * Retorna o índice de inatividade (IdleIndex) correspondente a um determinado ID de aquecedor.
      *
@@ -674,15 +671,14 @@ class Temperature {
      */
 
       static IdleIndex idle_index_for_id(const int8_t heater_id) {
-      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-        // Se for um H_BEDx, devolve IDLE_INDEX_BEDx
-        if (heater_id >= H_BED0 && heater_id < H_BED0 + MULTI_BED_COUNT)
-          return IdleIndex(IDLE_INDEX_BED0 + (heater_id - H_BED0));
-      #elif HAS_HEATED_BED
-        // Se for o único H_BED, devolve IDLE_INDEX_BED
-        if (heater_id == H_BED) return IDLE_INDEX_BED;
-      #endif
-        // Hotends e redundantes: usam valor >=0
+        #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+          if (heater_id <= H_BED0 && heater_id > H_BED0 - MULTI_BED_COUNT) {
+            const int8_t bed_index = H_BED0 - heater_id;
+            return IdleIndex(IDLE_INDEX_BED0 + bed_index);
+          }
+        #elif HAS_HEATED_BED
+          if (heater_id == H_BED) return IDLE_INDEX_BED;
+        #endif
         return IdleIndex(_MAX(heater_id, 0));
       }
 
@@ -749,7 +745,7 @@ class Temperature {
 
     #if HAS_HEATED_BED
 
-      // Watchdog de runaway, um por cama (ou um só se single-bed)
+      // 1) Watchdog de runaway (one per bed)
       #if ENABLED(WATCH_BED)
         #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
           static bed_watch_t watch_bed[MULTI_BED_COUNT];
@@ -758,16 +754,18 @@ class Temperature {
         #endif
       #endif
 
-      // Próximo check bang–bang, um por cama (se não usar PID por cama)
-      IF_DISABLED(PIDTEMPBED,
-        #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      // 2) Próximo check bang–bang se PIDTEMPBED estiver desabilitado
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        #if DISABLED(PIDTEMPBED)
           static millis_t next_bed_check_ms[MULTI_BED_COUNT];
-        #else
+        #endif
+      #else
+        #if DISABLED(PIDTEMPBED)
           static millis_t next_bed_check_ms;
         #endif
-      );
+      #endif
 
-      // Valores raw mínimos e máximos (array ou escalar)
+      // 3) Limites brutos de temperatura (mintemp/maxtemp)
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
         static raw_adc_t mintemp_raw_BED[MULTI_BED_COUNT];
         static raw_adc_t maxtemp_raw_BED[MULTI_BED_COUNT];
@@ -1163,11 +1161,19 @@ class Temperature {
           start_watching_bed(bed);
         }
 
-        static void wait_for_bed_heating(const uint8_t bed);
+        static bool wait_for_beds(
+          const bool no_wait_for_cooling = true
+          OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+        );
 
-        static void manage_heated_bed(const uint8_t bed, const millis_t &ms);
+        static void wait_for_beds_heating();
+        
+        static void manage_heated_bed(
+          const uint8_t bed,
+          const millis_t &ms
+        );
 
-      #else // single-bed legacy
+      #else // Fall-back single-bed
           
 
         #if ENABLED(SHOW_TEMP_ADC_VALUES)
