@@ -57,7 +57,6 @@
   #define FAN_IS_M106ABLE(Q) false
 #endif
 
-
 //#####################################################################################################
 //########################          TCC LUCAS          ################################################
 //#####################################################################################################
@@ -65,7 +64,7 @@
 
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
       #include <Wire.h>
-      #include "ADS1x15.h"
+      #include "ADS1X15.h"
       #include "PCF8574.h"   
 #endif
 typedef enum : int8_t {
@@ -455,7 +454,6 @@ typedef struct { raw_adc_t raw_min, raw_max; celsius_t mintemp, maxtemp; } temp_
 #endif
 
 class Temperature {
-
   public:
 
    /**
@@ -475,9 +473,7 @@ class Temperature {
      *  - false: o processo foi cancelado pelo usuário (se click_to_cancel for verdadeiro).
      *
      * Quando o suporte a múltiplas camas estiver desativado, a função se aplica à cama única padrão.
-    */
-     
-
+    */     
     #if HAS_HOTEND
       static hotend_info_t temp_hotend[HOTENDS];
       static const celsius_t hotend_maxtemp[HOTENDS];
@@ -514,8 +510,16 @@ class Temperature {
 
       // wait_for_bed esperando índice
       bool wait_for_bed(const uint8_t bed,
-                        const bool no_wait_for_cooling = true
+                        const bool no_wait_for_cooling = true,
                         OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+      );
+
+      /**
+       * Aguarda TODAS as camas atingirem o alvo (M190 sem P).
+       */
+      static bool wait_for_beds(
+        const bool no_wait_for_cooling = true
+        OPTARG(G26_CLICK_CAN_CANCEL, , const bool click_to_cancel = false)
       );
 
       // N camas
@@ -523,8 +527,9 @@ class Temperature {
       static void initpcf8574ads1115beds();
       static void read_bed_temperatures_ads1115();
       static void update_bed_pwm_pcf8574();
-      static void setBedTarget(const uint8_t bed, const celsius_t celsius);
+      static void setBedsTarget(const uint8_t bed, const celsius_t celsius);
       static void setAllBedsTarget(const celsius_t celsius);
+      
 
     #else
       // modo single-bed: mesma função, sem índice
@@ -1150,28 +1155,22 @@ class Temperature {
         }
 
         // Inicia a vigilância térmica de runaway
-        static void start_watching_bed(const uint8_t bed) {
+        static void start_watching_beds(const uint8_t bed) {
           TERN_(WATCH_BED, watch_bed[bed].restart(degBed(bed), degTargetBed(bed)));
         }
 
         // Define o setpoint da cama específica
-        static void setTargetBed(const uint8_t bed, const celsius_t celsius) {
+        static void setBedsTarget(const uint8_t bed, const celsius_t celsius) {
           TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
           temp_bed[bed].target = _MIN(celsius, BED_MAX_TARGET);
-          start_watching_bed(bed);
+          start_watching_beds(bed);
         }
-
-        static bool wait_for_beds(
-          const bool no_wait_for_cooling = true
-          OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
-        );
+            
 
         static void wait_for_beds_heating();
+
+        static void manage_heated_beds(const uint8_t bed, const millis_t &ms);
         
-        static void manage_heated_bed(
-          const uint8_t bed,
-          const millis_t &ms
-        );
 
       #else // Fall-back single-bed
           
@@ -1529,8 +1528,6 @@ class Temperature {
           OPTARG(THERMAL_PROTECTION_BED, RUNAWAY_IND_BED)
         #endif
         
-
-
         // Chamber, Cooler…
         OPTARG(THERMAL_PROTECTION_CHAMBER, RUNAWAY_IND_CHAMBER)
         OPTARG(THERMAL_PROTECTION_COOLER,  RUNAWAY_IND_COOLER)
@@ -1591,25 +1588,19 @@ class Temperature {
       };
 
       typedef struct {
-        millis_t       timer     = 0;
-        TRState        state     = TRInactive;
-        float          running_temp;
+        millis_t timer = 0;
+        TRState state = TRInactive;
+        float running_temp;
         #if ENABLED(THERMAL_PROTECTION_VARIANCE_MONITOR)
-          millis_t     variance_timer = 0;
-          celsius_float_t last_temp   = 0.0, variance = 0.0;
+          millis_t variance_timer = 0;
+          celsius_float_t last_temp = 0.0, variance = 0.0;
         #endif
-        void run(const_celsius_float_t current,
-                const_celsius_float_t target,
-                const heater_id_t heater_id,
-                const uint16_t period_seconds,
-                const celsius_t hysteresis_degc);
+        void run(const_celsius_float_t current, const_celsius_float_t target, const heater_id_t heater_id, const uint16_t period_seconds, const celsius_t hysteresis_degc);
       } tr_state_machine_t;
 
-      // Um state machine por hotend + por cama(s) + por chamber/cooler
       static tr_state_machine_t tr_state_machine[NR_HEATER_RUNAWAY];
 
-    #endif // HAS_THERMAL_PROTECTION
-  };
-
+  #endif // HAS_THERMAL_PROTECTION
+};
 
 extern Temperature thermalManager;

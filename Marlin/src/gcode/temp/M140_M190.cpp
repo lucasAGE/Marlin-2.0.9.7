@@ -54,8 +54,8 @@ void GcodeSuite::M140_M190(const bool isM190) {
   #if HAS_PREHEAT
     got_temp = parser.seenval('I');
     if (got_temp) {
-      const uint8_t index = parser.value_byte();
-      temp = ui.material_preset[_MIN(index, PREHEAT_COUNT - 1)].bed_temp;
+      const uint8_t idx = _MIN(parser.value_byte(), PREHEAT_COUNT - 1);
+      temp = ui.material_preset[idx].bed_temp;
     }
   #endif
 
@@ -75,7 +75,7 @@ void GcodeSuite::M140_M190(const bool isM190) {
   // Se multi‐bed e sem P → alvo comum para todas. Se P ou single‐bed → alvo apenas para bed_index.
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     if (specific_bed) {
-      thermalManager.setTargetBed(bed_index, temp);
+      thermalManager.setBedsTarget(bed_index, temp);
     } else {
       thermalManager.setAllBedsTarget(temp);
     }
@@ -107,20 +107,17 @@ void GcodeSuite::M140_M190(const bool isM190) {
 
   // Se for um M190 (aguarda atingimento do alvo), entra no laço de espera:
   if (isM190) {
-    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-      if (specific_bed) {
-        // Aguarda só a cama especificada
-        thermalManager.wait_for_bed(bed_index, no_wait_for_cooling);
-      } else {
-        // Aguarda todas as camas atingirem o alvo
-        for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
-          thermalManager.wait_for_bed(b, no_wait_for_cooling);
-        }
-      }
-    #else
-      thermalManager.wait_for_bed(0, no_wait_for_cooling);
-    #endif
-  }
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    if (specific_bed) {
+      thermalManager.wait_for_bed(bed_index, no_wait_for_cooling);
+    } else {
+      // Chama _uma única vez_ a rotina que espera todas as camas
+      thermalManager.wait_for_beds(no_wait_for_cooling);
+    }
+  #else
+    thermalManager.wait_for_bed(0, no_wait_for_cooling);
+  #endif
+}
   // Se for apenas M140 (sem espera), definimos função de “status reset” para exibir o check‐mark
   else {
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
