@@ -508,34 +508,38 @@ class Temperature {
       static ADS1115 bedADS;
       static PCF8574 bedPCF;
 
-      // wait_for_bed esperando índice
-      bool wait_for_bed(const uint8_t bed,
-                        const bool no_wait_for_cooling = true,
-                        OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
-      );
+      /**
+     * Aguarda UMA cama (unique) atingir o alvo (M190 P<bed>).  
+     * bed Índice da cama [0…MULTI_BED_COUNT-1]
+     */
+    bool wait_for_unique_bed(
+      const uint8_t bed,
+      const bool no_wait_for_cooling = true,
+      OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+    );
 
       /**
        * Aguarda TODAS as camas atingirem o alvo (M190 sem P).
        */
       static bool wait_for_beds(
-        const bool no_wait_for_cooling = true
-        OPTARG(G26_CLICK_CAN_CANCEL, , const bool click_to_cancel = false)
+        const bool no_wait_for_cooling = true,
+        OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
       );
 
-      // N camas
+      // Estado das N camas
       static bed_info_t temp_bed[MULTI_BED_COUNT];
+
+      // Inicialização e leitura I²C
       static void initpcf8574ads1115beds();
       static void read_bed_temperatures_ads1115();
       static void update_bed_pwm_pcf8574();
-      static void setBedsTarget(const uint8_t bed, const celsius_t celsius);
-      static void setAllBedsTarget(const celsius_t celsius);
       
-
     #else
       // modo single-bed: mesma função, sem índice
-      bool wait_for_bed(const bool no_wait_for_cooling = true
-                        OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
-      );
+      bool wait_for_bed(
+      const bool no_wait_for_cooling = true,
+      OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+    );
 
       // única cama
       static bed_info_t temp_bed;
@@ -607,8 +611,6 @@ class Temperature {
       #endif
       static void singlenozzle_change(const uint8_t old_tool, const uint8_t new_tool);
     #endif
-
-
 
     #if HEATER_IDLE_HANDLER
 
@@ -760,12 +762,10 @@ class Temperature {
       #endif
 
       // 2) Próximo check bang–bang se PIDTEMPBED estiver desabilitado
-      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-        #if DISABLED(PIDTEMPBED)
+      #if DISABLED(PIDTEMPBED)
+        #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
           static millis_t next_bed_check_ms[MULTI_BED_COUNT];
-        #endif
-      #else
-        #if DISABLED(PIDTEMPBED)
+        #else
           static millis_t next_bed_check_ms;
         #endif
       #endif
@@ -909,7 +909,6 @@ class Temperature {
     #if HAS_HEATED_BED
               static celsius_float_t analog_to_celsius_bed(const raw_adc_t raw);             
     #endif
-
 
     #if HAS_TEMP_CHAMBER
       static celsius_float_t analog_to_celsius_chamber(const raw_adc_t raw);
@@ -1127,9 +1126,7 @@ class Temperature {
     */
 
       
-    #if HAS_HEATED_BED   
-
-      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    #if HAS_HEATED_BED && ENABLED(ENABLE_MULTI_HEATED_BEDS)
 
         // Leitura bruta (ADC) de uma cama específica
         static raw_adc_t rawBedTemp(const uint8_t bed) { return temp_bed[bed].getraw(); }
@@ -1159,22 +1156,26 @@ class Temperature {
           TERN_(WATCH_BED, watch_bed[bed].restart(degBed(bed), degTargetBed(bed)));
         }
 
-        // Define o setpoint da cama específica
-        static void setBedsTarget(const uint8_t bed, const celsius_t celsius) {
+        // Ajuste de setpoint para UMA cama
+        static void set_unique_bed_Target(
+          const uint8_t bed,
+          const celsius_t celsius
+        ) {
           TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
           temp_bed[bed].target = _MIN(celsius, BED_MAX_TARGET);
           start_watching_beds(bed);
         }
-            
 
+        // Ajuste de setpoint para TODAS as camas
+        static void set_Beds_Target(const celsius_t celsius) {
+          for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b)
+            set_unique_bed_Target(b, celsius);
+        }        
         static void wait_for_beds_heating();
-
         static void manage_heated_beds(const uint8_t bed, const millis_t &ms);
         
-
-      #else // Fall-back single-bed
+    #elif HAS_HEATED_BED // Fall-back single-bed
           
-
         #if ENABLED(SHOW_TEMP_ADC_VALUES)
           static raw_adc_t rawBedTemp()  { return temp_bed.getraw(); }
         #endif
@@ -1202,9 +1203,7 @@ class Temperature {
 
         static void wait_for_bed_heating();
         static void manage_heated_bed(const millis_t &ms);
-
-      #endif // ELSE ENABLE_MULTI_HEATED_BEDS
-
+      
     #endif // HAS_HEATED_BED
 
 
@@ -1473,7 +1472,7 @@ class Temperature {
     #if HAS_HOTEND
       static float get_pid_output_hotend(const uint8_t e);
     #endif
-     #if ENABLED(PIDTEMPBED)
+     #if ENABLED(PIDTEMPBED) // DISABLE FOR MULTI-BEDS
       static float get_pid_output_bed();
     #endif
     #if ENABLED(PIDTEMPCHAMBER)
