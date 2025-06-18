@@ -109,10 +109,10 @@ void GcodeSuite::M140_M190(const bool isM190) {
   if (isM190) {
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     if (specific_bed) {
-      thermalManager.wait_for_bed(bed_index, no_wait_for_cooling);
+      thermalManager.wait_for_specific_bed(bed_index, no_wait_for_cooling, click_to_cancel);
     } else {
       // Chama _uma única vez_ a rotina que espera todas as camas
-      thermalManager.wait_for_beds(no_wait_for_cooling);
+      thermalManager.wait_for_all_beds(no_wait_for_cooling);
     }
   #else
     thermalManager.wait_for_bed(0, no_wait_for_cooling);

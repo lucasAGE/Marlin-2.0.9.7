@@ -76,7 +76,7 @@
     }
   }
 
-  void Temperature::set_Beds_Target(const celsius_t celsius) {
+  void Temperature::set_all_beds_target(const celsius_t celsius) {
         // Aplique o mesmo setpoint a cada cama de 0 até MULTI_BED_COUNT-1
       for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
         TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
@@ -131,7 +131,7 @@
 
   
   /// Ajusta o target de uma única cama.
-  void Temperature::set_unique_bed_Target(const uint8_t bed, const celsius_t celsius) {
+  void Temperature::set_specific_bed_target(const uint8_t bed, const celsius_t celsius) {
     if (bed >= MULTI_BED_COUNT) return;
     TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
     temp_bed[bed].target = _MIN(celsius, BED_MAX_TARGET);
@@ -3289,7 +3289,7 @@ void Temperature::disable_all_heaters() {
       // Desliga todas as camas
       uint8_t state = bedPCF.read8();
       for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
-        setBedsTarget(b, 0);
+        set_all_beds_target(0);
         temp_bed[b].soft_pwm_amount = 0;
         state &= ~_BV(BED0_PCF_BIT + b);
       }
@@ -4713,15 +4713,15 @@ void Temperature::print_heater_states(
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
 
       // Função inline substituta para TEMP_BED_CONDITIONS
-      inline bool temp_bed_condition(const uint8_t b, const millis_t now, const millis_t* residency_start_ms) {
+      inline bool is_temp_bed_condition(const uint8_t b, const millis_t now, const millis_t* residency_start_ms) {
         return !residency_start_ms[b] || PENDING(now, residency_start_ms[b] + SEC_TO_MS(TEMP_BED_RESIDENCY_TIME));
       }
 
          
       // Aguarda todas as camas atingirem alvo
-      bool Temperature::wait_for_beds(const bool no_wait_for_cooling/*=true*/
-        OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel/*=false*/)
-        ){
+      bool Temperature::wait_for_all_beds(bool no_wait_for_cooling, 
+        bool click_to_cancel     = false)
+        {
 
           millis_t        residency_start_ms[MULTI_BED_COUNT] = { 0 };
           bool            first_loop[MULTI_BED_COUNT]        = { true };
@@ -4822,7 +4822,7 @@ void Temperature::print_heater_states(
         } while (
           wait_for_heatup
           #if TEMP_BED_RESIDENCY_TIME > 0
-            && [&]{ for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) if (temp_bed_condition(b, now, residency_start_ms)) return true; return false; }()
+            && [&]{ for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) if ( is_temp_bed_condition(b, now, residency_start_ms)) return true; return false; }()
           #else
             && [&]{ for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) if (wants_to_cool[b] ? isCoolingBed(b) : isHeatingBed(b)) return true; return false; }()
           #endif
@@ -4837,14 +4837,14 @@ void Temperature::print_heater_states(
       }
 
         // Versão multi-beds de wait_for_bed_heating
-      void Temperature::wait_for_beds_heating() {
+      void Temperature::wait_for_all_beds_heating() {
         bool any = false;
         for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b)
           if (isHeatingBed(b)) { any = true; break; }
         if (any) {
            SERIAL_ECHOLNPGM("Wait for beds heating...");
            LCD_MESSAGE(MSG_BED_HEATING);
-           wait_for_beds();
+           wait_for_all_beds();
            ui.reset_status();
         }
       }

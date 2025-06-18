@@ -512,18 +512,18 @@ class Temperature {
      * Aguarda UMA cama (unique) atingir o alvo (M190 P<bed>).  
      * bed Índice da cama [0…MULTI_BED_COUNT-1]
      */
-    bool wait_for_unique_bed(
-      const uint8_t bed,
-      const bool no_wait_for_cooling = true,
-      OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+      static bool wait_for_specific_bed(
+      const uint8_t       bed,
+      const bool          no_wait_for_cooling = true,
+      const bool          click_to_cancel      = false
     );
 
       /**
        * Aguarda TODAS as camas atingirem o alvo (M190 sem P).
        */
-      static bool wait_for_beds(
+      static bool wait_for_all_beds(
         const bool no_wait_for_cooling = true,
-        OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+        const bool click_to_cancel     = false
       );
 
       // Estado das N camas
@@ -536,7 +536,7 @@ class Temperature {
       
     #else
       // modo single-bed: mesma função, sem índice
-      bool wait_for_bed(
+      static bool wait_for_bed(
       const bool no_wait_for_cooling = true,
       OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
     );
@@ -1157,7 +1157,7 @@ class Temperature {
         }
 
         // Ajuste de setpoint para UMA cama
-        static void set_unique_bed_Target(
+        static void set_specific_bed_target(
           const uint8_t bed,
           const celsius_t celsius
         ) {
@@ -1167,11 +1167,11 @@ class Temperature {
         }
 
         // Ajuste de setpoint para TODAS as camas
-        static void set_Beds_Target(const celsius_t celsius) {
+        static void set_all_beds_target(const celsius_t celsius) {
           for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b)
-            set_unique_bed_Target(b, celsius);
+            set_specific_bed_target(b, celsius);
         }        
-        static void wait_for_beds_heating();
+        static void wait_for_all_beds_heating();
         static void manage_heated_beds(const uint8_t bed, const millis_t &ms);
         
     #elif HAS_HEATED_BED // Fall-back single-bed
