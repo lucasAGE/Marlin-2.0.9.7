@@ -1938,7 +1938,7 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
   }
 
   #endif // ENABLE_MULTI_HEATED_BEDS
-}
+
 #endif
 
 
@@ -4717,10 +4717,46 @@ void Temperature::print_heater_states(
         return !residency_start_ms[b] || PENDING(now, residency_start_ms[b] + SEC_TO_MS(TEMP_BED_RESIDENCY_TIME));
       }
 
+      bool Temperature::wait_for_specific_bed(
+    const uint8_t bed,
+    bool no_wait_for_cooling,
+    bool click_to_cancel
+  ) {
+    // Se essa cama não está aquecendo/precisando esperar, retorna imediatamente
+    if (!(isHeatingBed(bed) || (!no_wait_for_cooling && isCoolingBed(bed))))
+      return false;
+
+    SERIAL_ECHOLNPGM("Wait for bed "); SERIAL_ECHO(bed); SERIAL_ECHOPGM(" heating...");
+    LCD_MESSAGE(MSG_BED_HEATING);
+
+    // Loop simples até a cama atingir o alvo ou cancelamento
+    while (true) {
+      idle();
+      gcode.reset_stepper_timeout();
+
+      const celsius_float_t current = degBed(bed);
+      const celsius_t target = degTargetBed(bed);
+
+      // Se chegou no alvo, sai
+      if (ABS(current - target) < TEMP_BED_HYSTERESIS) break;
+
+      // Se só espera aquecimento e já resfriou além do aceitável, sai
+      if (no_wait_for_cooling && current > target) break;
+
+      #if G26_CLICK_CAN_CANCEL
+        if (click_to_cancel && ui.use_click()) {
+          TERN_(HAS_MARLINUI_MENU, ui.quick_feedback());
+          break;
+        }
+      #endif
+    }
+
+    ui.reset_status();
+    return true;
+  }
          
       // Aguarda todas as camas atingirem alvo
-      bool Temperature::wait_for_all_beds(bool no_wait_for_cooling, 
-        bool click_to_cancel     = false)
+      bool Temperature::wait_for_all_beds(bool no_wait_for_cooling, bool click_to_cancel)
         {
 
           millis_t        residency_start_ms[MULTI_BED_COUNT] = { 0 };

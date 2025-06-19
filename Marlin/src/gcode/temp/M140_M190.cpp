@@ -75,9 +75,9 @@ void GcodeSuite::M140_M190(const bool isM190) {
   // Se multi‐bed e sem P → alvo comum para todas. Se P ou single‐bed → alvo apenas para bed_index.
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     if (specific_bed) {
-      thermalManager.setBedsTarget(bed_index, temp);
+      thermalManager.set_specific_bed_target(bed_index, temp);
     } else {
-      thermalManager.setAllBedsTarget(temp);
+      thermalManager.set_all_beds_target(temp);
     }
   #else
     thermalManager.setTargetBed(0, temp);
@@ -109,7 +109,7 @@ void GcodeSuite::M140_M190(const bool isM190) {
   if (isM190) {
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     if (specific_bed) {
-      thermalManager.wait_for_specific_bed(bed_index, no_wait_for_cooling, click_to_cancel);
+      thermalManager.wait_for_specific_bed(bed_index, no_wait_for_cooling);
     } else {
       // Chama _uma única vez_ a rotina que espera todas as camas
       thermalManager.wait_for_all_beds(no_wait_for_cooling);

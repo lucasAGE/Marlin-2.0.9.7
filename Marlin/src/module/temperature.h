@@ -484,19 +484,19 @@ class Temperature {
     //########################          TCC LUCAS          ################################################
     //#####################################################################################################
     /**
-   * Declaração das variáveis de controle de temperatura da(s) cama(s) aquecida(s).
-   *
-   * Quando HAS_HEATED_BED está definido, indica que há pelo menos uma cama aquecida na impressora.
-   *
-   * - Se ENABLE_MULTI_HEATED_BEDS estiver ativado, define um array temp_bed[] com MULTI_BED_COUNT posições,
-   *   onde cada posição representa uma cama aquecida independente. Cada índice contém uma estrutura bed_info_t
-   *   com os dados de temperatura, estado de aquecimento, leitura atual, etc.
-   *
-   * - Caso contrário (modo tradicional com uma única cama), declara-se apenas uma única variável temp_bed
-   *   do tipo bed_info_t, representando a cama principal.
-   *
-   * Isso permite que o mesmo código trabalhe com uma ou várias camas, de forma modular.
-   */
+     * Declaração das variáveis de controle de temperatura da(s) cama(s) aquecida(s).
+     *
+     * Quando HAS_HEATED_BED está definido, indica que há pelo menos uma cama aquecida na impressora.
+     *
+     * - Se ENABLE_MULTI_HEATED_BEDS estiver ativado, define um array temp_bed[] com MULTI_BED_COUNT posições,
+     *   onde cada posição representa uma cama aquecida independente. Cada índice contém uma estrutura bed_info_t
+     *   com os dados de temperatura, estado de aquecimento, leitura atual, etc.
+     *
+     * - Caso contrário (modo tradicional com uma única cama), declara-se apenas uma única variável temp_bed
+     *   do tipo bed_info_t, representando a cama principal.
+     *
+     * Isso permite que o mesmo código trabalhe com uma ou várias camas, de forma modular.
+    */
 
 
     // Leituras e labels sempre existem, independentemente de multi-bed
@@ -533,6 +533,7 @@ class Temperature {
       static void initpcf8574ads1115beds();
       static void read_bed_temperatures_ads1115();
       static void update_bed_pwm_pcf8574();
+      static void wait_for_all_beds_heating();
       
     #else
       // modo single-bed: mesma função, sem índice
@@ -651,7 +652,7 @@ class Temperature {
           #define _IDLE_INDEX_BED(N) , IDLE_INDEX_BED##N
           REPEAT(MULTI_BED_COUNT, _IDLE_INDEX_BED)
           #undef _IDLE_INDEX_BED
-          #elif HAS_HEATED_BED
+        #elif HAS_HEATED_BED
           // Cama única
           , IDLE_INDEX_BED
         #endif
@@ -1157,22 +1158,12 @@ class Temperature {
         }
 
         // Ajuste de setpoint para UMA cama
-        static void set_specific_bed_target(
-          const uint8_t bed,
-          const celsius_t celsius
-        ) {
-          TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
-          temp_bed[bed].target = _MIN(celsius, BED_MAX_TARGET);
-          start_watching_beds(bed);
-        }
+       static void set_all_beds_target(const celsius_t celsius);    
+       
 
-        // Ajuste de setpoint para TODAS as camas
-        static void set_all_beds_target(const celsius_t celsius) {
-          for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b)
-            set_specific_bed_target(b, celsius);
-        }        
-        static void wait_for_all_beds_heating();
-        static void manage_heated_beds(const uint8_t bed, const millis_t &ms);
+      // Ajuste de setpoint para TODAS as camas
+      static void set_specific_bed_target(const uint8_t bed, const celsius_t celsius);
+      static void manage_heated_beds(const uint8_t bed, const millis_t &ms);   
         
     #elif HAS_HEATED_BED // Fall-back single-bed
           
@@ -1575,7 +1566,7 @@ class Temperature {
           }
            #else
            TERN_(THERMAL_PROTECTION_BED,     if (heater_id == H_BED)     return RUNAWAY_IND_BED);
-            }
+            
         #endif
         
         return (RunawayIndex)_MAX(heater_id, 0);
