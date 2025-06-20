@@ -1564,8 +1564,8 @@ class Temperature {
           if (heater_id >= H_BED0 && heater_id < H_BED0 + MULTI_BED_COUNT) {
              return RunawayIndex(RUNAWAY_IND_BED0 + (heater_id - H_BED0));
           }
-           #else
-           TERN_(THERMAL_PROTECTION_BED,     if (heater_id == H_BED)     return RUNAWAY_IND_BED);
+        #else
+          TERN_(THERMAL_PROTECTION_BED,     if (heater_id == H_BED)     return RUNAWAY_IND_BED);
             
         #endif
         

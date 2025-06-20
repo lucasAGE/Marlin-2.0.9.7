@@ -67,13 +67,11 @@
       for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
       mintemp_raw_BED[b] = TEMP_SENSOR_BED_RAW_LO_TEMP;
       maxtemp_raw_BED[b] = TEMP_SENSOR_BED_RAW_HI_TEMP;
-
-      // NÃO reinicia o watchdog aqui — ele já está com target=0 e next_ms=0
+      IF_DISABLED(PIDTEMPBED, next_bed_check_ms[b] = 0;);
+       // NÃO reinicia o watchdog aqui — ele já está com target=0 e next_ms=0
       // Se quiser forçar a zero, descomente a linha abaixo:
       // TERN_(WATCH_BED, watch_bed[b].restart(0, 0));
-
-      IF_DISABLED(PIDTEMPBED, next_bed_check_ms[b] = 0;);
-    }
+      }
   }
 
   void Temperature::set_all_beds_target(const celsius_t celsius) {
@@ -323,22 +321,11 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
  */
 
 #if HAS_HEATED_BED
-
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    /**
-     * Retorna a label “Bed” se for qualquer ID de cama (H_BED0…H_BED0+MULTI_BED_COUNT-1).
-     * O colon final permite concatenar com outras macros de heater (hotend/chamber/etc).
-     */
-    #define _BED_FSTR(h) \
-      (((h) >= H_BED0 && (h) < H_BED0 + MULTI_BED_COUNT) ? GET_TEXT_F(MSG_BED) :
+    #define _BED_FSTR(h) (((h) >= H_BED0 && (h) < H_BED0 + MULTI_BED_COUNT) ? GET_TEXT_F(MSG_BED) :
   #else
-    /**
-     * Cama única: só mapeia H_BED
-     */
-    #define _BED_FSTR(h) \
-      ((h) == H_BED ? GET_TEXT_F(MSG_BED) :
+    #define _BED_FSTR(h) (((h) == H_BED) ? GET_TEXT_F(MSG_BED) :
   #endif
-
 #else
   #define _BED_FSTR(h)
 #endif
@@ -1243,9 +1230,9 @@ volatile bool Temperature::raw_temps_ready = false;
 #endif // MPCTEMP
 
 
- //#####################################################################################################
-    //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
+//#####################################################################################################
+//########################          TCC LUCAS          ################################################
+//#####################################################################################################
 
   int16_t Temperature::getHeaterPower(const heater_id_t heater_id) {
   switch (heater_id) {
@@ -1940,8 +1927,6 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
   #endif // ENABLE_MULTI_HEATED_BEDS
 
 #endif
-
-
 
 #if HAS_HEATED_CHAMBER
 
