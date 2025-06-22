@@ -123,24 +123,6 @@
 #define HID_PROBE     -3
 #define HID_CHAMBER   -2
 
-      //#####################################################################################################
-      //########################          TCC LUCAS          ################################################
-      //#####################################################################################################
-
-#if TEMP_SENSOR_BED == 3000 && MULTI_BED_COUNT>1
-  #define ENABLE_MULTI_HEATED_BEDS
-  #define HAS_TEMP_ADC_BED0 1
-  #define HAS_TEMP_ADC_BED1 1
-  #define HAS_TEMP_ADC_BED2 1
-  #define HAS_TEMP_ADC_BED3 1
-  #else
-  #undef HAS_TEMP_ADC_BED0
-  #undef HAS_TEMP_ADC_BED1
-  #undef HAS_TEMP_ADC_BED2
-  #undef HAS_TEMP_ADC_BED3 
-#endif
-
-
   //##################################################
   //#########    TCC LUCAS – camas aquecidas    #######
   //##################################################

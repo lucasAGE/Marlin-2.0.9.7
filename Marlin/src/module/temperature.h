@@ -175,28 +175,12 @@ enum ADCSensorState : char {
   // definimos pares Prepare/Measure para cada cama em ADS1115.
   // Caso contrário, usamos apenas PrepareTemp_BED / MeasureTemp_BED.
   //
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-
-    #if HAS_TEMP_ADC_BED0
-      PrepareTemp_BED0, MeasureTemp_BED0,
-    #endif
-    #if HAS_TEMP_ADC_BED1
-      PrepareTemp_BED1, MeasureTemp_BED1,
-    #endif
-    #if HAS_TEMP_ADC_BED2
-      PrepareTemp_BED2, MeasureTemp_BED2,
-    #endif
-    #if HAS_TEMP_ADC_BED3
-      PrepareTemp_BED3, MeasureTemp_BED3,
-    #endif
-
-  #else  // fallback para single‐bed
-
+  
     #if HAS_TEMP_ADC_BED
       PrepareTemp_BED, MeasureTemp_BED,
     #endif
 
-  #endif // ENABLE_MULTI_HEATED_BEDS
+ 
 
    //-----------------------------
   // Chamber, Cooler, Probe, etc.
