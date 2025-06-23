@@ -455,13 +455,12 @@
 #elif TEMP_SENSOR_BED == -2
   #error "MAX6675 Thermocouples (-2) not supported for TEMP_SENSOR_BED."
 #elif TEMP_SENSOR_BED == -1
-  #define TEMP_SENSOR_BED_IS_AD595 1
-
-     
-
+  #define TEMP_SENSOR_BED_IS_AD595 1     
 #elif TEMP_SENSOR_BED > 0
   #define TEMP_SENSOR_BED_IS_THERMISTOR 1
-   #define HAS_TEMP_ADC_BED 1
+   #if DISABLED(ENABLE_MULTI_HEATED_BEDS)
+    #define HAS_TEMP_ADC_BED 1
+   #endif
   #if TEMP_SENSOR_BED == 1000
     #define TEMP_SENSOR_BED_IS_CUSTOM 1
   #elif TEMP_SENSOR_BED == 998 || TEMP_SENSOR_BED == 999

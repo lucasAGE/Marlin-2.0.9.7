@@ -590,8 +590,6 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
 
 #endif // HAS_HEATED_BED
 
-
-
 #if HAS_TEMP_CHAMBER
   chamber_info_t Temperature::temp_chamber; // = { 0 }
   #if HAS_HEATED_CHAMBER
@@ -630,7 +628,6 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
               Temperature::maxtemp_raw_BOARD = TEMP_SENSOR_BOARD_RAW_HI_TEMP;
   #endif
 #endif
-
 
 #if BOTH(HAS_MARLINUI_MENU, PREVENT_COLD_EXTRUSION) && E_MANUAL > 0
   bool Temperature::allow_cold_extrude_override = false;
@@ -1247,6 +1244,7 @@ volatile bool Temperature::raw_temps_ready = false;
       // Fallback single-bed
       case H_BED:  return temp_bed.soft_pwm_amount;
     #endif
+    
     #if HAS_HEATED_CHAMBER
       case H_CHAMBER: return temp_chamber.soft_pwm_amount;
     #endif

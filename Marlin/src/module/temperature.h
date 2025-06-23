@@ -166,25 +166,9 @@ enum ADCSensorState : char {
   #if HAS_TEMP_ADC_7
     PrepareTemp_7, MeasureTemp_7,
   #endif
-
-  //##################################################
-  //#########    TCC LUCAS – camas aquecidas    #######
-  //##################################################
-  //
-  // Se houver suporte a múltiplas camas (multi‐bed),
-  // definimos pares Prepare/Measure para cada cama em ADS1115.
-  // Caso contrário, usamos apenas PrepareTemp_BED / MeasureTemp_BED.
-  //
-  
-    #if HAS_TEMP_ADC_BED
-      PrepareTemp_BED, MeasureTemp_BED,
-    #endif
-
- 
-
-   //-----------------------------
-  // Chamber, Cooler, Probe, etc.
-  //-----------------------------
+  #if HAS_TEMP_ADC_BED
+    PrepareTemp_BED, MeasureTemp_BED,
+  #endif  
   #if HAS_TEMP_ADC_CHAMBER
     PrepareTemp_CHAMBER, MeasureTemp_CHAMBER,
   #endif
@@ -199,11 +183,7 @@ enum ADCSensorState : char {
   #endif
   #if HAS_TEMP_ADC_REDUNDANT
     PrepareTemp_REDUNDANT, MeasureTemp_REDUNDANT,
-  #endif
-
-  //-------------------------------
-  // Outros ADCs não‐temperatura
-  //-------------------------------
+  #endif  
   #if HAS_JOY_ADC_X
     PrepareJoy_X, MeasureJoy_X,
   #endif
@@ -523,8 +503,7 @@ class Temperature {
       // modo single-bed: mesma função, sem índice
       static bool wait_for_bed(
       const bool no_wait_for_cooling = true,
-      OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
-    );
+      OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false));
 
       // única cama
       static bed_info_t temp_bed;
