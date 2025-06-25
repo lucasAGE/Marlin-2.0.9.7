@@ -467,44 +467,10 @@ class Temperature {
     static raw_adc_t analog_to_raw_bed(const celsius_t c);
     static FSTR_P  get_heater_label_fstr(const heater_id_t h);
 
-    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-      // I²C e periferais só no modo multi-bed
-      static ADS1115 bedADS;
-      static PCF8574 bedPCF;
-
-      /**
-     * Aguarda UMA cama (unique) atingir o alvo (M190 P<bed>).  
-     * bed Índice da cama [0…MULTI_BED_COUNT-1]
-     */
-      static bool wait_for_specific_bed(
-      const uint8_t       bed,
-      const bool          no_wait_for_cooling = true,
-      const bool          click_to_cancel      = false
-    );
-
-      /**
-       * Aguarda TODAS as camas atingirem o alvo (M190 sem P).
-       */
-      static bool wait_for_all_beds(
-        const bool no_wait_for_cooling = true,
-        const bool click_to_cancel     = false
-      );
-
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)      
       // Estado das N camas
-      static bed_info_t temp_bed[MULTI_BED_COUNT];
-
-      // Inicialização e leitura I²C
-      static void initpcf8574ads1115beds();
-      static void read_bed_temperatures_ads1115();
-      static void update_bed_pwm_pcf8574();
-      static void wait_for_all_beds_heating();
-      
-    #else
-      // modo single-bed: mesma função, sem índice
-      static bool wait_for_bed(
-      const bool no_wait_for_cooling = true,
-      OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false));
-
+      static bed_info_t temp_bed[MULTI_BED_COUNT];      
+    #else    
       // única cama
       static bed_info_t temp_bed;
     #endif  // ENABLE_MULTI_HEATED_BEDS
@@ -1087,9 +1053,7 @@ class Temperature {
      *   Responsável por aplicar o controle térmico bang-bang ou PID para a cama indicada.
      *
      * Essas funções garantem controle completo e seguro sobre cada cama aquecida em sistemas com múltiplas camas.
-    */
-
-      
+    */      
     #if HAS_HEATED_BED && ENABLED(ENABLE_MULTI_HEATED_BEDS)
 
         // Leitura bruta (ADC) de uma cama específica
@@ -1120,13 +1084,35 @@ class Temperature {
           TERN_(WATCH_BED, watch_bed[bed].restart(degBed(bed), degTargetBed(bed)));
         }
 
-        // Ajuste de setpoint para UMA cama
-       static void set_all_beds_target(const celsius_t celsius);    
-       
-
       // Ajuste de setpoint para TODAS as camas
-      static void set_specific_bed_target(const uint8_t bed, const celsius_t celsius);
-      static void manage_heated_beds(const uint8_t bed, const millis_t &ms);   
+      static void setTargetBed(uint8_t bed, const celsius_t celsius);
+      // Ajuste de setpoint para UMA cama
+      static void set_all_beds_target(const celsius_t celsius);           
+    
+      // I²C e periferais só no modo multi-bed
+      static ADS1115 bedADS;
+      static PCF8574 bedPCF;
+        
+      // Inicialização e leitura I²C
+      static void initpcf8574ads1115beds();
+      static void read_bed_temperatures_ads1115();
+      static void update_bed_pwm_pcf8574();
+                        
+      static bool wait_for_bed(
+      uint8_t       bed,
+      bool          no_wait_for_cooling = true,
+      bool          click_to_cancel      = false
+      );
+
+      static bool wait_for_all_beds(bool no_wait_for_cooling, bool click_to_cancel);
+      
+      static void wait_for_bed_heating(uint8_t bed); //MultiBed
+      static void wait_for_all_beds_heating();     //MultiBed    
+     
+
+      static void manage_heated_bed(const millis_t &ms) 
+      static void manage_heated_beds(const uint8_t bed, const millis_t &ms); 
+
         
     #elif HAS_HEATED_BED // Fall-back single-bed
           
@@ -1155,8 +1141,8 @@ class Temperature {
           OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel=false)
         );
 
-        static void wait_for_bed_heating();
-        static void manage_heated_bed(const millis_t &ms);
+        static void wait_for_bed_heating(); //SingleBed
+        static void manage_heated_bed(const millis_t &ms); //SingleBed
       
     #endif // HAS_HEATED_BED
 

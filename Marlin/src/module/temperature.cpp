@@ -125,11 +125,9 @@
       }
     }
     bedPCF.write8(state);
-  }
-
-  
+  }  
   /// Ajusta o target de uma única cama.
-  void Temperature::set_specific_bed_target(const uint8_t bed, const celsius_t celsius) {
+  void Temperature::setTargetBed(uint8_t bed, const celsius_t celsius) {
     if (bed >= MULTI_BED_COUNT) return;
     TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
     temp_bed[bed].target = _MIN(celsius, BED_MAX_TARGET);
@@ -574,17 +572,12 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
       #endif
     #else
       // Single-bed: variáveis únicas
-      bed_info_t   Temperature::temp_bed;
-      raw_adc_t    Temperature::mintemp_raw_BED = TEMP_SENSOR_BED_RAW_LO_TEMP;
-      raw_adc_t    Temperature::maxtemp_raw_BED = TEMP_SENSOR_BED_RAW_HI_TEMP;
-      #if ENABLED(WATCH_BED)
-        static bed_watch_t  Temperature::watch_bed        = {};
-      #endif
-
-      #if DISABLED(PIDTEMPBED)
-        static millis_t     Temperature::next_bed_check_ms = 0;
-      #endif
-
+      bed_info_t Temperature::temp_bed; // = { 0 }
+      // Init min and max temp with extreme values to prevent false errors during startup
+      raw_adc_t Temperature::mintemp_raw_BED = TEMP_SENSOR_BED_RAW_LO_TEMP,
+                Temperature::maxtemp_raw_BED = TEMP_SENSOR_BED_RAW_HI_TEMP;
+      TERN_(WATCH_BED, bed_watch_t Temperature::watch_bed); // = { 0 }
+      IF_DISABLED(PIDTEMPBED, millis_t Temperature::next_bed_check_ms);
   #endif // ENABLE_MULTI_HEATED_BEDS
 #endif // HAS_HEATED_BED
 
@@ -4308,7 +4301,7 @@ void Temperature::isr() {
    *   With ADC: " T0:nnn.nn /nnn.nn (nnn.nn)"
    */
   static void print_heater_state(const heater_id_t e, const_celsius_float_t c, const_celsius_float_t t
-    OPTARG(SHOW_TEMP_ADC_VALUES, const float r)
+    OPTARG(SHOW_TEMP_ADC_VALUES, const float r))
   {
     char k;
 
@@ -4647,54 +4640,122 @@ void Temperature::print_heater_states(
       #define MIN_COOLING_SLOPE_TIME_BED 60
     #endif
 
-    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)     
+      bool Temperature::wait_for_bed(
+          uint8_t bed,
+          const bool no_wait_for_cooling/*=true*/,
+          const bool click_to_cancel/*=false*/
+      ) {
+        #if TEMP_BED_RESIDENCY_TIME > 0
+          millis_t residency_start_ms = 0;
+          bool first_loop = true;
+          #define TEMP_BED_CONDITIONS (!residency_start_ms || PENDING(now, residency_start_ms + SEC_TO_MS(TEMP_BED_RESIDENCY_TIME)))
+        #else
+          #define TEMP_BED_CONDITIONS (wants_to_cool ? isCoolingBed(bed) : isHeatingBed(bed))
+        #endif
 
-      // Função inline substituta para TEMP_BED_CONDITIONS
-      inline bool is_temp_bed_condition(const uint8_t b, const millis_t now, const millis_t* residency_start_ms) {
-        return !residency_start_ms[b] || PENDING(now, residency_start_ms[b] + SEC_TO_MS(TEMP_BED_RESIDENCY_TIME));
-      }
+        #if DISABLED(BUSY_WHILE_HEATING) && ENABLED(HOST_KEEPALIVE_FEATURE)
+          KEEPALIVE_STATE(NOT_BUSY);
+        #endif
 
-      bool Temperature::wait_for_specific_bed(
-          const uint8_t bed,
-          bool no_wait_for_cooling,
-          bool click_to_cancel
-        ) {
-        // Se essa cama não está aquecendo/precisando esperar, retorna imediatamente
-        if (!(isHeatingBed(bed) || (!no_wait_for_cooling && isCoolingBed(bed))))
+        // --- Early exit se nada para aguardar ---
+        if (!( isHeatingBed(bed) || (!no_wait_for_cooling && isCoolingBed(bed)) ))
           return false;
 
+        // --- Mensagens de início, por cama ---
         SERIAL_ECHOLNPGM("Wait for bed "); SERIAL_ECHO(bed); SERIAL_ECHOPGM(" heating...");
         LCD_MESSAGE(MSG_BED_HEATING);
 
-        // Loop simples até a cama atingir o alvo ou cancelamento
-        while (true) {
+        #if ENABLED(PRINTER_EVENT_LEDS)
+          const celsius_float_t start_temp = degBed(bed);
+          printerEventLEDs.onBedHeatingStart();
+        #endif
+
+        bool wants_to_cool = false;
+        celsius_float_t target_temp = -1, old_temp = 9999;
+        millis_t now, next_temp_ms = 0, next_cool_check_ms = 0;
+        wait_for_heatup = true;
+
+        do {
+          // Atualiza alvo e sentido de controle
+          celsius_t new_target = degTargetBed(bed);
+          if (target_temp != new_target) {
+            target_temp   = new_target;
+            wants_to_cool = isCoolingBed(bed);
+            if (no_wait_for_cooling && wants_to_cool) break;
+          }
+
+          now = millis();
+          if (ELAPSED(now, next_temp_ms)) {
+            next_temp_ms = now + 1000UL;
+            print_heater_states(active_extruder);
+            #if TEMP_BED_RESIDENCY_TIME > 0
+              SERIAL_ECHOPGM(" W:");
+              if (residency_start_ms)
+                SERIAL_ECHO(long((SEC_TO_MS(TEMP_BED_RESIDENCY_TIME) - (now - residency_start_ms)) / 1000UL));
+              else
+                SERIAL_CHAR('?');
+            #endif
+            SERIAL_EOL();
+          }
+
           idle();
           gcode.reset_stepper_timeout();
 
-          const celsius_float_t current = degBed(bed);
-          const celsius_t target = degTargetBed(bed);
+          const celsius_float_t temp = degBed(bed);
 
-          // Se chegou no alvo, sai
-          if (ABS(current - target) < TEMP_BED_HYSTERESIS) break;
+          #if ENABLED(PRINTER_EVENT_LEDS)
+            if (!wants_to_cool)
+              printerEventLEDs.onBedHeating(start_temp, temp, target_temp);
+          #endif
 
-          // Se só espera aquecimento e já resfriou além do aceitável, sai
-          if (no_wait_for_cooling && current > target) break;
+          #if TEMP_BED_RESIDENCY_TIME > 0
+            const celsius_float_t diff = fabs(target_temp - temp);
+            if (!residency_start_ms) {
+              if (diff < TEMP_BED_WINDOW)
+                residency_start_ms = now + (first_loop ? SEC_TO_MS(TEMP_BED_RESIDENCY_TIME)/3 : 0);
+            }
+            else if (diff > TEMP_BED_HYSTERESIS) {
+              residency_start_ms = now;
+            }
+          #endif
+
+          // Proteção contra “wait forever” no cooling
+          if (wants_to_cool) {
+            if (!next_cool_check_ms || ELAPSED(now, next_cool_check_ms)) {
+              if (old_temp - temp < float(MIN_COOLING_SLOPE_DEG_BED)) break;
+              next_cool_check_ms = now + SEC_TO_MS(MIN_COOLING_SLOPE_TIME_BED);
+              old_temp = temp;
+            }
+          }
 
           #if G26_CLICK_CAN_CANCEL
             if (click_to_cancel && ui.use_click()) {
+              wait_for_heatup = false;
               TERN_(HAS_MARLINUI_MENU, ui.quick_feedback());
-              break;
             }
           #endif
-        }
 
-        ui.reset_status();
-        return true;
+          #if TEMP_BED_RESIDENCY_TIME > 0
+            first_loop = false;
+          #endif
+
+        } while (wait_for_heatup && TEMP_BED_CONDITIONS);
+
+        if (wait_for_heatup) {
+          wait_for_heatup = false;
+          ui.reset_status();
+          return true;
+        }
+        return false;
       }
+      #undef TEMP_BED_CONDITIONS //wait_for_bed
          
       // Aguarda todas as camas atingirem alvo
       bool Temperature::wait_for_all_beds(bool no_wait_for_cooling, bool click_to_cancel)
         {
+          // Estado compartilhado
+          wait_for_heatup = true;
 
           millis_t        residency_start_ms[MULTI_BED_COUNT] = { 0 };
           bool            first_loop[MULTI_BED_COUNT]        = { true };
@@ -4714,21 +4775,23 @@ void Temperature::print_heater_states(
             printerEventLEDs.onBedHeatingStart();
           #endif
 
-        millis_t now = 0;
-        millis_t next_temp_ms = 0;
-        wait_for_heatup = true;
-
         // Inicializa valores por cama
         for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
           target_temp[b]      = -1;
           old_temp[b]         = 9999;
         }
+      // Máscara de camas ainda “pendentes”
+        uint8_t pending = (1 << MULTI_BED_COUNT) - 1;
 
-        do {
+        // Temporizadores auxiliares
+        millis_t now         = 0,
+                next_temp_ms = 0;
+
+        // Loop principal: termina quando pending == 0 ou cancelado
+        while (pending && wait_for_heatup) {
           now = millis();
 
-          // Status impresso uma vez por segundo para todas as camas
-          // Status impresso uma vez por segundo
+          // Imprime status geral a cada 1s
           if (ELAPSED(now, next_temp_ms)) {
             next_temp_ms = now + 1000UL;
             print_heater_states(active_extruder);
@@ -4738,88 +4801,111 @@ void Temperature::print_heater_states(
           idle();
           gcode.reset_stepper_timeout();
 
-          // Processa cada cama
+          // Processa cama a cama
           for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
-            // Detecta mudança de alvo
-            if (target_temp[b] != degTargetBed(b)) {
+            if (!(pending & (1 << b))) continue;        // já finalizada
+
+            // Atualiza alvo e sentido
+            celsius_t new_t = degTargetBed(b);
+            if (new_t != target_temp[b]) {
+              target_temp[b]   = new_t;
               wants_to_cool[b] = isCoolingBed(b);
-              target_temp[b]   = degTargetBed(b);
-              // Se não espera por resfriamento, pula esta cama
-              if (no_wait_for_cooling && wants_to_cool[b])
+              if (no_wait_for_cooling && wants_to_cool[b]) {
+                pending &= ~(1 << b);
                 continue;
+              }
             }
 
-            const celsius_float_t temp = degBed(b);
+            // Leitura atual
+            celsius_float_t cur = degBed(b);
 
+            // LEDs
             #if ENABLED(PRINTER_EVENT_LEDS)
               if (!wants_to_cool[b])
                 printerEventLEDs.onBedHeating(
-                  start_temp[b],       // temperatura inicial daquela cama
-                  temp,                // temperatura atual
-                  target_temp[b]       // temperatura alvo
+                  start_temp[b], cur, target_temp[b]
                 );
             #endif
 
+            // Residência (se habilitado)
             #if TEMP_BED_RESIDENCY_TIME > 0
-              const float diff = ABS(target_temp[b] - temp);
+              const celsius_float_t diff = ABS(target_temp[b] - cur);
               if (!residency_start_ms[b]) {
                 if (diff < TEMP_BED_WINDOW)
-                  residency_start_ms[b] = now + (first_loop[b] ? SEC_TO_MS(TEMP_BED_RESIDENCY_TIME)/3 : 0);
-              } else if (diff > TEMP_BED_HYSTERESIS) {
+                  residency_start_ms[b] = now + (first_loop[b]
+                    ? SEC_TO_MS(TEMP_BED_RESIDENCY_TIME)/3
+                    : 0);
+              }
+              else if (diff > TEMP_BED_HYSTERESIS) {
                 residency_start_ms[b] = now;
               }
             #endif
 
-            // Controle resfriamento mínimo
+            // Proteção cooling slope
             if (wants_to_cool[b]) {
               if (!next_cool_check_ms[b] || ELAPSED(now, next_cool_check_ms[b])) {
-                if (old_temp[b] - temp < float(MIN_COOLING_SLOPE_DEG_BED)) {
+                if (old_temp[b] - cur < float(MIN_COOLING_SLOPE_DEG_BED)) {
                   wait_for_heatup = false;
                   break;
                 }
                 next_cool_check_ms[b] = now + SEC_TO_MS(MIN_COOLING_SLOPE_TIME_BED);
-                old_temp[b] = temp;
+                old_temp[b]           = cur;
               }
             }
 
+            // Cancelamento por clique
             #if G26_CLICK_CAN_CANCEL
               if (click_to_cancel && ui.use_click()) {
                 wait_for_heatup = false;
                 TERN_(HAS_MARLINUI_MENU, ui.quick_feedback());
+                break;
               }
             #endif
 
             first_loop[b] = false;
-          }
 
-        } while (
-          wait_for_heatup
-          #if TEMP_BED_RESIDENCY_TIME > 0
-            && [&]{ for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) if ( is_temp_bed_condition(b, now, residency_start_ms)) return true; return false; }()
-          #else
-            && [&]{ for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) if (wants_to_cool[b] ? isCoolingBed(b) : isHeatingBed(b)) return true; return false; }()
-          #endif
-        );
+            // Verifica se esta cama já concluiu a espera
+            bool done;
+            #if TEMP_BED_RESIDENCY_TIME > 0
+              // saiu da janela de espera/residência?
+              done = residency_start_ms[b]
+                && !PENDING(now, residency_start_ms[b] + SEC_TO_MS(TEMP_BED_RESIDENCY_TIME));
+            #else
+              done = wants_to_cool[b]
+                ? !isCoolingBed(b)
+                : !isHeatingBed(b);
+            #endif
 
-          if (wait_for_heatup) {
-            wait_for_heatup = false;
-            ui.reset_status();
-            return true;
+            if (done) {
+              pending &= ~(1 << b);
+            }
           }
-            return false;
+        }
+
+        ui.reset_status();
+        return wait_for_heatup;
+      } //wait_for_all_beds
+
+      // Espera uma cama específica apenas se ela estiver aquecendo
+      void Temperature::wait_for_bed_heating(uint8_t bed) //MultiBed {
+        if ( isHeatingBed(bed) ) {
+          SERIAL_ECHOLNPGM("Wait for bed heating #"); SERIAL_ECHO(bed); SERIAL_EOL();
+          // Se quiser mostrar o número da cama no LCD, faça algo como:
+          // LCD_MESSAGE(MSG_BED_HEATING " #" + String(bed+1));
+          LCD_MESSAGE(MSG_BED_HEATING);
+          wait_for_bed(bed);            // chama a versão parametrizada
+          ui.reset_status();
+        }
       }
 
-        // Versão multi-beds de wait_for_bed_heating
+      // Espera todas as camas (paralelamente via wait_for_all_beds)
       void Temperature::wait_for_all_beds_heating() {
-        bool any = false;
-        for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b)
-          if (isHeatingBed(b)) { any = true; break; }
-        if (any) {
-           SERIAL_ECHOLNPGM("Wait for beds heating...");
-           LCD_MESSAGE(MSG_BED_HEATING);
-           wait_for_all_beds();
-           ui.reset_status();
-        }
+        // Mensagem geral
+        SERIAL_ECHOLNPGM("Wait for all beds heating...");
+        LCD_MESSAGE(MSG_BED_HEATING);
+        // Aguarda todas as camas em paralelo
+        wait_for_all_beds(no_wait_for_cooling, click_to_cancel);
+        ui.reset_status();
       }
         
     #else // Fall-Back Single Bed
@@ -4933,7 +5019,7 @@ void Temperature::print_heater_states(
         return false;
       }
 
-      void Temperature::wait_for_bed_heating() {
+      void Temperature::wait_for_bed_heating()//SingleBed {
         if (isHeatingBed()) {
           SERIAL_ECHOLNPGM("Wait for bed heating...");
           LCD_MESSAGE(MSG_BED_HEATING);
