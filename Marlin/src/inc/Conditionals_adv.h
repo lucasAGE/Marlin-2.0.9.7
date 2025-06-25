@@ -127,8 +127,12 @@
   //#########    TCC LUCAS – camas aquecidas    #######
   //##################################################
 
-#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  #if MULTI_BED_COUNT > 0
+    #define ENABLE_MULTI_HEATED_BEDS 1
+  #endif
 
+
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
   #define HID_BED0     -21
   #define HID_BED1     -22
   #define HID_BED2     -23

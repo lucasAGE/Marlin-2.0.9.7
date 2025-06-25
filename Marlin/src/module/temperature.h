@@ -1054,35 +1054,66 @@ class Temperature {
      *
      * Essas funções garantem controle completo e seguro sobre cada cama aquecida em sistemas com múltiplas camas.
     */      
-    #if HAS_HEATED_BED && ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
 
-        // Leitura bruta (ADC) de uma cama específica
-        static raw_adc_t rawBedTemp(const uint8_t bed) { return temp_bed[bed].getraw(); }
+      // Leitura bruta (ADC) de uma cama específica
+      static raw_adc_t rawBedTemp(const uint8_t bed) { return temp_bed[bed].getraw(); }
 
-        // Temperatura atual em °C
-        static celsius_float_t degBed(const uint8_t bed) { return temp_bed[bed].celsius; }
+      // Temperatura atual em °C
+      static celsius_float_t degBed(const uint8_t bed) { return temp_bed[bed].celsius; }
 
-        // Temperatura arredondada
-        static celsius_t wholeDegBed(const uint8_t bed) { return static_cast<celsius_t>(degBed(bed) + 0.5f); }
+      // Temperatura arredondada
+      static celsius_t wholeDegBed(const uint8_t bed) { return static_cast<celsius_t>(degBed(bed) + 0.5f); }
 
-        // Temperatura alvo
-        static celsius_t degTargetBed(const uint8_t bed) { return temp_bed[bed].target; }
+      // Temperatura alvo
+      static celsius_t degTargetBed(const uint8_t bed) { return temp_bed[bed].target; }
 
-        // Está aquecendo?
-        static bool isHeatingBed(const uint8_t bed) { return temp_bed[bed].target > temp_bed[bed].celsius; }
+      // Está aquecendo?
+      static bool isHeatingBed(const uint8_t bed) { return temp_bed[bed].target > temp_bed[bed].celsius; }
 
-        // Está esfriando?
-        static bool isCoolingBed(const uint8_t bed) { return temp_bed[bed].target < temp_bed[bed].celsius; }
+      // Está esfriando?
+      static bool isCoolingBed(const uint8_t bed) { return temp_bed[bed].target < temp_bed[bed].celsius; }
 
-        // Temperatura próxima da desejada
-        static bool degBedNear(const uint8_t bed, const celsius_t temp) {
-          return ABS(wholeDegBed(bed) - temp) < TEMP_BED_HYSTERESIS;
+      // Temperatura próxima da desejada
+      static bool degBedNear(const uint8_t bed, const celsius_t temp) {
+        return ABS(wholeDegBed(bed) - temp) < TEMP_BED_HYSTERESIS;
+      }
+
+      // Inicia a vigilância térmica de runaway
+      static void start_watching_beds(const uint8_t bed) {
+        TERN_(WATCH_BED, watch_bed[bed].restart(degBed(bed), degTargetBed(bed)));
+      }
+
+      // ─────────── Helpers “genéricos” ───────────
+      // Ajusta o setpoint de TODAS as camas de uma vez
+      static void setTargetBed(const celsius_t celsius) {
+        set_all_beds_target(celsius);
+      }
+      
+      // Retorna true se AO MENOS UMA cama ainda estiver aquecendo
+      static bool isAnyBedHeating() {
+        for (uint8_t b = 0; b < MULTI_BED_COUNT; b++)
+          if (isHeatingBed(b)) return true;
+        return false;
+      }
+
+      // Retorna true se AO MENOS UMA cama ainda estiver esfriando
+      static bool isAnyBedCooling() {
+        for (uint8_t b = 0; b < MULTI_BED_COUNT; b++)
+          if (isCoolingBed(b)) return true;
+        return false;
+      }
+
+      // Retorna true se TODAS as camas estiverem dentro da faixa de histerese
+      static bool allBedsNearTarget() {
+        for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+          const celsius_t tgt = degTargetBed(b);
+          if (tgt >= 30 && !degBedNear(b, tgt)) return false;
         }
+        return true;
+      }
 
-        // Inicia a vigilância térmica de runaway
-        static void start_watching_beds(const uint8_t bed) {
-          TERN_(WATCH_BED, watch_bed[bed].restart(degBed(bed), degTargetBed(bed)));
-        }
+      // ─────────── API existente ───────────
 
       // Ajuste de setpoint para TODAS as camas
       static void setTargetBed(uint8_t bed, const celsius_t celsius);
@@ -1107,10 +1138,13 @@ class Temperature {
       static bool wait_for_all_beds(bool no_wait_for_cooling, bool click_to_cancel);
       
       static void wait_for_bed_heating(uint8_t bed); //MultiBed
-      static void wait_for_all_beds_heating();     //MultiBed    
+      static void wait_for_all_beds_heating(
+        bool no_wait_for_cooling = true,
+        bool click_to_cancel     = false
+      );  
      
 
-      static void manage_heated_bed(const millis_t &ms) 
+      static void manage_heated_bed(const millis_t &ms);
       static void manage_heated_beds(const uint8_t bed, const millis_t &ms); 
 
         

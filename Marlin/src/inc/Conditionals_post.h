@@ -2476,11 +2476,9 @@
       //########################          TCC LUCAS          ################################################
       //#####################################################################################################
 
-    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-      #if MULTI_BED_COUNT > 0
-        #define HAS_TEMP_BED 1
-      #endif
-    #endif
+    
+      
+    
 
 #if ENABLED(JOYSTICK)
   #if PIN_EXISTS(JOY_X)

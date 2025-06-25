@@ -40,6 +40,10 @@
 //########################          TCC LUCAS          ################################################
 //#####################################################################################################
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+
+    #warning "Compilando com suporte a MULTI HEATED BEDS"
+
+
     #include <Wire.h>
     #include "ADS1X15.h"
     #include "PCF8574.h"
@@ -72,15 +76,6 @@
       // Se quiser forçar a zero, descomente a linha abaixo:
       // TERN_(WATCH_BED, watch_bed[b].restart(0, 0));
       }
-  }
-
-  void Temperature::set_all_beds_target(const celsius_t celsius) {
-        // Aplique o mesmo setpoint a cada cama de 0 até MULTI_BED_COUNT-1
-      for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
-        TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
-        temp_bed[b].target = _MIN(celsius, BED_MAX_TARGET);
-        TERN_(WATCH_BED, watch_bed[b].restart(temp_bed[b].celsius, temp_bed[b].target));
-      }  
   }
 
   //==============================================================================
@@ -133,8 +128,16 @@
     temp_bed[bed].target = _MIN(celsius, BED_MAX_TARGET);
     TERN_(WATCH_BED, watch_bed[bed].restart(temp_bed[bed].celsius, temp_bed[bed].target));
   }
-#endif
 
+void Temperature::set_all_beds_target(const celsius_t celsius) {
+        // Aplique o mesmo setpoint a cada cama de 0 até MULTI_BED_COUNT-1
+      for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+        TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
+        temp_bed[b].target = _MIN(celsius, BED_MAX_TARGET);
+        TERN_(WATCH_BED, watch_bed[b].restart(temp_bed[b].celsius, temp_bed[b].target));
+      }  
+  }
+#endif //ENABLE_MULTI_HEATED_BEDS
 
 
 #if EITHER(HAS_COOLER, LASER_COOLANT_FLOW_METER)
@@ -320,12 +323,18 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
 
 #if HAS_HEATED_BED
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    #define _BED_FSTR(h) (((h) >= H_BED0 && (h) < H_BED0 + MULTI_BED_COUNT) ? GET_TEXT_F(MSG_BED) :
+    // Para H_BED0…H_BED0+N-1
+    #define _BED_FSTR(h)  \
+      (( ((h) >= H_BED0 && (h) < H_BED0 + MULTI_BED_COUNT) \
+        ? GET_TEXT_F(MSG_BED) : )
   #else
-    #define _BED_FSTR(h) (((h) == H_BED) ? GET_TEXT_F(MSG_BED) :
+    // Apenas H_BED
+    #define _BED_FSTR(h)  \
+      ( ((h) == H_BED) \
+        ? GET_TEXT_F(MSG_BED) : )
   #endif
 #else
-  #define _BED_FSTR(h)
+  #define _BED_FSTR(h)  /* nada */
 #endif
 
 #if HAS_HEATED_CHAMBER
@@ -333,13 +342,23 @@ PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
 #else
   #define _CHAMBER_FSTR(h)
 #endif
+
 #if HAS_COOLER
   #define _COOLER_FSTR(h) (h) == H_COOLER ? GET_TEXT_F(MSG_COOLER) :
 #else
   #define _COOLER_FSTR(h)
 #endif
+
 #define _E_FSTR(h,N) ((HOTENDS) > N && (h) == N) ? F(STR_E##N) :
-#define HEATER_FSTR(h) _BED_FSTR(h) _CHAMBER_FSTR(h) _COOLER_FSTR(h) _E_FSTR(h,1) _E_FSTR(h,2) _E_FSTR(h,3) _E_FSTR(h,4) _E_FSTR(h,5) _E_FSTR(h,6) _E_FSTR(h,7) F(STR_E0)
+#define HEATER_FSTR(h)                     \
+  _BED_FSTR(h)                            \
+  _CHAMBER_FSTR(h)                        \
+  _COOLER_FSTR(h)                         \
+  _E_FSTR(h,1) _E_FSTR(h,2)               \
+  _E_FSTR(h,3) _E_FSTR(h,4)               \
+  _E_FSTR(h,5) _E_FSTR(h,6)               \
+  _E_FSTR(h,7)                           \
+  GET_TEXT_F(STR_E0)
 
 //
 // Initialize MAX TC objects/SPI
@@ -3752,9 +3771,11 @@ void Temperature::isr() {
       #if HAS_HEATED_BED
         #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
           uint8_t state = 0;
-          for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {  
+          for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) { 
+            // 1) Cria a máscara do canal SoftPWM: cada cama usa um bit único
+            const uint8_t pwm_mask = 1 << b; 
             // 1) Pergunta ao SoftPWM se o canal deve ficar ligado          
-            const bool on = soft_pwm_bed[b].add(mask, temp_bed[b].soft_pwm_amount);
+            const bool on = soft_pwm_bed[b].add(pwm_mask, temp_bed[b].soft_pwm_amount);
             // 2) Se on, marca o bit correto (BED0_PCF_BIT + b)
             if (on) state |= _BV(BED0_PCF_BIT + b);
           }
@@ -4306,7 +4327,7 @@ void Temperature::isr() {
     char k;
 
     // Primeiro, escolhe a letra de prefixo (k) de acordo com o tipo de heater_id
-    switch (e) {asd
+    switch (e) {
       default:
       #if HAS_TEMP_HOTEND
           k = 'T'; break;
@@ -4899,10 +4920,15 @@ void Temperature::print_heater_states(
       }
 
       // Espera todas as camas (paralelamente via wait_for_all_beds)
-      void Temperature::wait_for_all_beds_heating() {
+      void Temperature::wait_for_all_beds_heating(
+        bool no_wait_for_cooling /*=true*/,
+        bool click_to_cancel     /*=false*/
+      ) {
+        
         // Mensagem geral
         SERIAL_ECHOLNPGM("Wait for all beds heating...");
         LCD_MESSAGE(MSG_BED_HEATING);
+        
         // Aguarda todas as camas em paralelo
         wait_for_all_beds(no_wait_for_cooling, click_to_cancel);
         ui.reset_status();
@@ -5019,7 +5045,7 @@ void Temperature::print_heater_states(
         return false;
       }
 
-      void Temperature::wait_for_bed_heating()//SingleBed {
+      void Temperature::wait_for_bed_heating(){//SingleBed {
         if (isHeatingBed()) {
           SERIAL_ECHOLNPGM("Wait for bed heating...");
           LCD_MESSAGE(MSG_BED_HEATING);

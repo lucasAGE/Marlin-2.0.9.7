@@ -29,18 +29,27 @@
  *  - Se ENABLE_MULTI_HEATED_BEDS não estiver ativado, qualquer P<bed> é ignorado e atua sobre cama única (índice 0).
  */
 
-
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  static uint8_t _ui_target_bed = 0;
+  static bool _ui_bed_ready() {
+    const celsius_t c = Temperature::degTargetBed(_ui_target_bed);
+    return (c < 30) || Temperature::degBedNear(_ui_target_bed, c);
+  }
+#endif
 
 void GcodeSuite::M140_M190(const bool isM190) {
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
 
-    // ————— Multi-Bed Version —————
-    if (DEBUGGING(DRYRUN)) return;
+  if (DEBUGGING(DRYRUN)) return;
+
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    // ————— Multi-Bed Implementation —————
 
     bool got_temp = false;
     celsius_t temp = 0;
-    bool has_bed = parser.seenval('B');
-    uint8_t bed  = has_bed ? parser.value_byte() : 0;
+
+    // B<bed> opcional
+    const bool has_bed = parser.seenval('P');
+    const uint8_t bed  = has_bed ? parser.value_byte() : 0;
 
     #if HAS_PREHEAT
       got_temp = parser.seenval('I');
@@ -58,6 +67,7 @@ void GcodeSuite::M140_M190(const bool isM190) {
     }
     if (!got_temp) return;
 
+    // Ajusta setpoint na cama especificada ou em todas
     if (has_bed) {
       thermalManager.setTargetBed(bed, temp);
       thermalManager.isHeatingBed(bed)
@@ -65,7 +75,7 @@ void GcodeSuite::M140_M190(const bool isM190) {
         : LCD_MESSAGE(MSG_BED_COOLING);
     } else {
       thermalManager.setTargetBed(temp);
-      thermalManager.isHeatingBed()
+      thermalManager.isHeatingBed(0)   // ainda chama a overload indexed, mas passa 0
         ? LCD_MESSAGE(MSG_BED_HEATING)
         : LCD_MESSAGE(MSG_BED_COOLING);
     }
@@ -76,24 +86,19 @@ void GcodeSuite::M140_M190(const bool isM190) {
 
     if (isM190) {
       if (has_bed) thermalManager.wait_for_bed(bed, no_wait_for_cooling);
-      else          thermalManager.wait_for_bed(no_wait_for_cooling);
+      else          thermalManager.wait_for_all_beds(no_wait_for_cooling, /*click=*/false);
     } else {
       if (has_bed) {
-        ui.set_status_reset_fn([=]() {
-          const celsius_t c = thermalManager.degTargetBed(bed);
-          return c < 30 || thermalManager.degBedNear(bed, c);
-        });
+        _ui_target_bed = bed;
+        ui.set_status_reset_fn(_ui_bed_ready);
       } else {
-        ui.set_status_reset_fn([]() {
-          const celsius_t c = thermalManager.degTargetBed();
-          return c < 30 || thermalManager.degBedNear(c);
-        });
+        _ui_target_bed = 0;  // referência padrão
+        ui.set_status_reset_fn(_ui_bed_ready);        
       }
     }
 
-  #else //fallback SingleBed
-
-    if (DEBUGGING(DRYRUN)) return;
+  #else
+    // ————— Original Single-Bed Implementation —————
 
     bool got_temp = false;
     celsius_t temp = 0;
@@ -130,6 +135,8 @@ void GcodeSuite::M140_M190(const bool isM190) {
         const celsius_t c = thermalManager.degTargetBed();
         return c < 30 || thermalManager.degBedNear(c);
       });
-  }
-  #endif //ENABLE_MULTI_HEATED_BED
+  
+
+  #endif // ENABLE_MULTI_HEATED_BEDS
+}
 #endif // HAS_HEATED_BED
