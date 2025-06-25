@@ -1,0 +1,413 @@
+Prompt de Relembrança para Modificações Multi-Bed (ADS+PCF)
+
+Configurações em Configuration.h
+
+#define TEMP_SENSOR_BED   3000
+#define MULTI_BED_COUNT   4    // pode ser 1, 2, 3 ou 4
+#define PCF8574_ADDRESS   0x20
+#define ADS1115_ADDRESS   0x48
+Contador de camas
+
+Sempre use MULTI_BED_COUNT (não “BED_QUANTITY”) para dimensionar arrays e loops.
+
+Macros de habilitação
+
+HAS_HEATED_BED para cama única.
+
+ENABLED(ENABLE_MULTI_HEATED_BEDS) ativa ADS & PCF no fluxo.
+
+Enums de Sensor & Heater IDs
+
+enum ADCSensorState { PrepareTemp_BED0…PrepareTemp_BED3, MeasureTemp_BED0…MeasureTemp_BED3, … }
+
+typedef enum : int8_t heater_id_t { H_BED0…H_BED3, … }
+
+enum IdleIndex { IDLE_INDEX_BED0… } e idle_index_for_id()
+
+enum RunawayIndex { RUNAWAY_IND_BED0… } e runaway_index_for_id()
+
+Estruturas centrais
+
+cpp
+Copiar
+Editar
+static bed_info_t  temp_bed[MULTI_BED_COUNT];
+static raw_adc_t   mintemp_raw_BED[MULTI_BED_COUNT],
+                  maxtemp_raw_BED[MULTI_BED_COUNT];
+heater_idle[] e tr_state_machine[] seguem tamanhos originais.
+
+Fluxo Original
+
+Leitura ADC em Temperature::isr()
+
+Substituir apenas nos cases PrepareTemp_BEDx e MeasureTemp_BEDx por ADS1115.
+
+Acúmulo + sinalização em readings_ready() / update_raw_temperatures()
+
+Conversão raw→°C com analog_to_celsius_bed(raw, idx)
+
+Cálculo do controle em manage_heated_bed() (PID ou bang–bang)
+
+Acionamento
+
+Single-bed GPIO: _PWM_MOD / _SLOW_PWM
+
+Multi-bed PCF: update_bed_pwm_pcf8574()
+
+Novas funções ADS/PCF
+
+Temperature::initpcf8574ads1115beds() chama Wire.begin(), bedADS.begin(), bedPCF.begin().
+
+update_bed_pwm_pcf8574() varre temp_bed[0…MULTI_BED_COUNT-1] e escreve bedPCF.write8(state).
+
+Pontos de atenção
+
+Não alterar nomes de enums, structs ou índices.
+
+Ajustar loops for (uint8_t b = 0; b < MULTI_BED_COUNT; b++).
+
+Manter verificações de erros de temperatura e watchdog.
+
+**************************
+***************************
+****************************
+
+
+Prompt de Relembrança para Modificações Multi-Bed (ADS + PCF)
+
+Configurações em Configuration.h
+
+#define TEMP_SENSOR_BED   3000
+#define MULTI_BED_COUNT   4    // pode ser 1, 2, 3 ou 4
+#define PCF8574_ADDRESS   0x20
+#define ADS1115_ADDRESS   0x48
+
+Definições de Heater ID (compatibilidade legado)
+
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  #define HID_BED0     -21
+  #define HID_BED1     -22
+  #define HID_BED2     -23
+  #define HID_BED3     -24
+  #define HID_BED      HID_BED0  // Para manter compatibilidade com código legado
+#else
+  #define HID_BED      -1
+#endif
+
+Contador de camas
+
+Sempre use MULTI_BED_COUNT (não “BED_QUANTITY”) para dimensionar arrays e loops.
+
+Macros de habilitação
+
+HAS_HEATED_BED ativa cama única.
+
+ENABLED(ENABLE_MULTI_HEATED_BEDS) ativa ADS & PCF & multiplas camas no fluxo.
+
+Enums de Sensor & Heater IDs
+
+enum ADCSensorState { PrepareTemp_BED0…PrepareTemp_BED3, MeasureTemp_BED0…MeasureTemp_BED3, … }
+
+typedef enum : int8_t heater_id_t { H_BED0…H_BED3, … }
+
+enum IdleIndex { IDLE_INDEX_BED0… } e idle_index_for_id()
+
+enum RunawayIndex { RUNAWAY_IND_BED0… } e runaway_index_for_id()
+
+Estruturas centrais
+
+static bed_info_t  temp_bed[MULTI_BED_COUNT];
+static raw_adc_t   mintemp_raw_BED[MULTI_BED_COUNT],
+                  maxtemp_raw_BED[MULTI_BED_COUNT];
+// heater_idle[] e tr_state_machine[] seguem tamanhos originais.
+
+Fluxo Original x Multi-Bed
+
+Leitura ADC em Temperature::isr()
+
+Substituir apenas nos cases PrepareTemp_BEDx e MeasureTemp_BEDx por ADS1115.
+
+Acúmulo + sinalização em readings_ready() / update_raw_temperatures()
+
+Conversão raw→°C com analog_to_celsius_bed(raw, idx)
+
+Cálculo do controle em manage_heated_bed() (PID ou bang–bang)
+
+Acionamento
+
+Single-bed GPIO: _PWM_MOD / _SLOW_PWM
+
+Multi-bed PCF: update_bed_pwm_pcf8574()
+
+Novas funções ADS/PCF
+
+Temperature::read_bed_temperatures_ads1115(Leitura das temperaturas via ADS1115)
+
+Temperature::initpcf8574ads1115beds() chama Wire.begin(), bedADS.begin(), bedPCF.begin()
+
+update_bed_pwm_pcf8574() varre temp_bed[0…MULTI_BED_COUNT-1] e escreve bedPCF.write8(state)
+
+static inline uint16_t raw16_to_raw10 (Converte raw16 do ADS → raw10 (módulo e down-sampling))
+
+Temperature::setAllBedsTarget (todas camas)
+
+Além de funções adaptadas como:
+
+Temperature::setBedTarget (apenas uma cama)
+
+Temperature::getHeaterPower
+
+Temperature::_temp_error
+
+Pontos de atenção
+
+Não alterar nomes de enums, structs ou índices.
+
+Ajustar loops for (uint8_t b = 0; b < MULTI_BED_COUNT; b++).
+
+Manter verificações de erros de temperatura e watchdog.
+
+Implementar wait_for_all_beds(), wait_for_all_beds_heating() e manage_heated_bed() conforme o fluxo multi-bed.
+
+****************************
+****************************
+*************************
+
+Prompt de Relembrança para Modificações Multi‑Bed (ADS1115 + PCF8574)
+
+1. Configurações em Configuration.h
+
+#define TEMP_SENSOR_BED     3000
+#define MULTI_BED_COUNT     4    // 1 a 4 camas
+#define PCF8574_ADDRESS     0x20
+#define ADS1115_ADDRESS     0x48
+
+2. Heater IDs (legado)
+
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  #define HID_BED0   -21
+  #define HID_BED1   -22
+  #define HID_BED2   -23
+  #define HID_BED3   -24
+  #define HID_BED    HID_BED0  // alias legado para cama 0
+#else
+  #define HID_BED    -1
+#endif
+
+3. Contador e condicionais
+
+Sempre usar MULTI_BED_COUNT em arrays e loops (for (uint8_t b = 0; b < MULTI_BED_COUNT; b++)).
+
+HAS_HEATED_BED → habilita cama única.
+
+ENABLED(ENABLE_MULTI_HEATED_BEDS) → ativa I²C, ADS1115, PCF8574 e múltiplas camas.
+
+4. Enums e índices
+
+enum ADCSensorState → StartSampling, PrepareTemp_BED0…PrepareTemp_BED3, MeasureTemp_BED0…MeasureTemp_BED3, SensorsReady, StartupDelay.
+
+typedef enum : int8_t heater_id_t → inclui H_BED0…H_BED3, H_BED=H_BED0 (legado), demais H_E0…H_E7, etc.
+
+enum IdleIndex { IDLE_INDEX_BED0… } + idle_index_for_id().
+
+enum RunawayIndex { RUNAWAY_IND_BED0… } + runaway_index_for_id().
+
+5. Estruturas centrais
+
+static bed_info_t   temp_bed[MULTI_BED_COUNT];
+static raw_adc_t    mintemp_raw_BED[MULTI_BED_COUNT],
+                  maxtemp_raw_BED[MULTI_BED_COUNT];
+// heater_idle[] e tr_state_machine[] mantêm tamanho original.
+
+6. Fluxo original x multi‑bed
+
+ISR em Temperature::isr() → substituir PrepareTemp_BEDx / MeasureTemp_BEDx por leitura ADS1115.
+
+readings_ready() / update_raw_temperatures() → acumula e sinaliza prontidão.
+
+analog_to_raw_bed(celsius) → converte °C→raw via termistor/tabela.
+
+analog_to_celsius_bed(raw, idx) → converte raw→°C.
+
+manage_heated_bed(bed, ms) → lógica bang–bang (sem PID para camas).
+
+Acionamento
+
+Single-bed: _PWM_MOD / _SLOW_PWM
+
+Multi-bed: update_bed_pwm_pcf8574()
+
+7. Novas funções a revisar
+
+static raw_adc_t analog_to_raw_bed(const celsius_t c);
+static FSTR_P  get_heater_label_fstr(const heater_id_t h);
+
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  static ADS1115 bedADS;
+  static PCF8574 bedPCF;
+
+  bool wait_for_specific_bed(
+    const uint8_t bed,
+    const bool no_wait_for_cooling = true,
+    OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+  );
+
+  static bool wait_for_all_beds(
+    const bool no_wait_for_cooling = true,
+    OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+  );
+
+  static void initpcf8574ads1115beds();
+  static void read_bed_temperatures_ads1115();
+  static void update_bed_pwm_pcf8574();
+
+  static void set_specific_bed_target(
+    const uint8_t bed,
+    const celsius_t celsius
+  );
+  static void set_Beds_target(const celsius_t celsius);
+#else
+  bool wait_for_bed(
+    const bool no_wait_for_cooling = true,
+    OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+  );
+
+  static bed_info_t temp_bed;
+#endif
+
+8. Pontos de atenção
+
+Não alterar nomes de enums, structs, índices ou assinaturas existentes.
+
+Manter OPTARG nos parâmetros de cancelamento.
+
+Usar MULTI_BED_COUNT em condicionais de compilação (#if MULTI_BED_COUNT >= X).
+
+Preservar verificações de BED_MINTEMP/MAXTEMP, watchdog e manejo de erros.
+
+Implementar wait_for_specific_bed(), wait_for_all_beds() e manage_heated_bed() conforme o fluxo multi-bed.
+
+Próximos passos: revisar os protótipos de getters/setters e utilitários (rawBedTemp, degBed, isHeatingBed, etc.) no temperature.h.
+
+
+**********************
+**********************
+************************
+
+Prompt de Relembrança para Modificações Multi-Bed (ADS1115 + PCF8574)
+
+Configurações em Configuration.h
+
+#define TEMP_SENSOR_BED     3000
+#define MULTI_BED_COUNT     4    // de 1 a 4 camas
+#define PCF8574_ADDRESS     0x20
+#define ADS1115_ADDRESS     0x48
+Heater IDs (legado)
+
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  #define HID_BED0   -21
+  #define HID_BED1   -22
+  #define HID_BED2   -23
+  #define HID_BED3   -24
+  #define HID_BED    HID_BED0  // alias legado para cama 0
+#else
+  #define HID_BED    -1
+#endif
+Contadores e condicionais
+
+Use sempre MULTI_BED_COUNT em arrays e loops:
+
+for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) { … }
+HAS_HEATED_BED → ativa cama única.
+
+ENABLED(ENABLE_MULTI_HEATED_BEDS) → ativa I²C, ADS1115, PCF8574 e múltiplas camas.
+
+Enums e índices
+
+Não há mais estados HAL-ADC para cama no ISR. Em vez disso leitura via ADS:
+
+enum ADCSensorState : int {
+  StartSampling,
+  SensorsReady,
+  StartupDelay,
+  // … demais hotends, chamber etc …
+};
+typedef enum : int8_t heater_id_t: inclui H_BED0…H_BED3, H_BED = H_BED0 (legado), mais H_E0…H_E7, etc.
+
+enum IdleIndex { IDLE_INDEX_BED0… } + idle_index_for_id().
+
+enum RunawayIndex { RUNAWAY_IND_BED0… } + runaway_index_for_id().
+
+Estruturas centrais
+
+static bed_info_t   temp_bed[MULTI_BED_COUNT];
+static raw_adc_t    mintemp_raw_BED[MULTI_BED_COUNT],
+                   maxtemp_raw_BED[MULTI_BED_COUNT];
+// heater_idle[] e tr_state_machine[] mantêm tamanho original.
+
+
+6. **Fluxo original × multi-bed**  
+- **Single-bed**: ISR usava `PrepareTemp_BED` / `MeasureTemp_BED` + `ACCUMULATE_ADC()`.  
+- **Multi-bed**:  
+  1. **No ISR** `Temperature::isr()` não há mais cases de cama — todo o ADC de camas é lido pelo ADS1115.  
+  2. **Dentro de** `readings_ready()` (no bloco de StartSampling/SensorsReady), chamar:  
+     ```cpp
+     readings_ready();                  // atualiza hotends, chamber, cooler…
+     read_bed_temperatures_ads1115();   // sua rotina ADS: raw16→raw10→setraw()/celsius
+     ```  
+  3. O ADS1115 faz internamente start+wait+read por canal.  
+  4. O controle PWM continua via loops sobre `soft_pwm_bed[b]` e `bedPCF.write(mask, on)` em `update_bed_pwm_pcf8574()`.
+
+7. **Novas funções a revisar**  
+```cpp
+static raw_adc_t analog_to_raw_bed(const celsius_t c);
+static FSTR_P  get_heater_label_fstr(const heater_id_t h);
+
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  static ADS1115   bedADS;
+  static PCF8574   bedPCF;
+
+  bool wait_for_specific_bed(
+    const uint8_t bed,
+    const bool no_wait_for_cooling = true,
+    OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+  );
+
+  static bool wait_for_all_beds(
+    const bool no_wait_for_cooling = true,
+    OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+  );
+
+  static void initpcf8574ads1115beds();
+  static void read_bed_temperatures_ads1115();
+  static void update_bed_pwm_pcf8574();
+
+  static void set_specific_bed_target(
+    const uint8_t bed,
+    const celsius_t celsius
+  );
+  static void set_Beds_target(const celsius_t celsius);
+#else
+  bool wait_for_bed(
+    const bool no_wait_for_cooling = true,
+    OPTARG(G26_CLICK_CAN_CANCEL, const bool click_to_cancel = false)
+  );
+
+  static bed_info_t temp_bed;
+#endif
+Pontos de atenção
+
+Não alterar nomes de enums, structs, índices ou assinaturas já existentes.
+
+Manter OPTARG nos parâmetros de cancelamento.
+
+Usar MULTI_BED_COUNT em condicionais de compilação (#if MULTI_BED_COUNT >= X).
+
+Preservar checagens de BED_MINTEMP/MAXTEMP, watchdog e tratamento de erro.
+
+Implementar wait_for_specific_bed(), wait_for_all_beds() e manage_heated_bed() seguindo fluxo multi-bed.
+
+Revisar protótipos de getters/setters e utilitários (rawBedTemp, degBed, isHeatingBed, etc.) em temperature.h antes de avançar.
+
+Observação chave: não existem mais estados de leitura direta de ADC para camas no ISR — toda leitura de temperatura de cama ocorre via ADS1115 dentro de readings_ready(), centralizando oversampling, conversão e sinalização de “pronto”.
+

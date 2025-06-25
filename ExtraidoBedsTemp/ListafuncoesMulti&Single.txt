@@ -1,0 +1,22 @@
+static bool wait_for_unique_bed
+
+static bool wait_for_beds
+
+static bool wait_for_bed(single-bed)
+
+********
+
+static void start_watching_beds
+
+static void set_unique_bed_target
+
+static void set_beds_target
+
+static void wait_for_beds_heating
+
+static void manage_heated_beds
+
+static void start_watching_bed(single-bed)
+static void wait_for_bed_heating()(single-bed)
+
+static void manage_heated_bed(single-bed)
