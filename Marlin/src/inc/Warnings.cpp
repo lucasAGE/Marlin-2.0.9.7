@@ -49,6 +49,10 @@
 #if HAS_HEATED_BED && DISABLED(THERMAL_PROTECTION_BED)
   #warning "Safety Alert! Enable THERMAL_PROTECTION_BED for the final build!"
 #endif
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  #warning "Compilando com suporte a MULTI HEATED BEDS"
+#endif
+
 #if HAS_HEATED_CHAMBER && DISABLED(THERMAL_PROTECTION_CHAMBER)
   #warning "Safety Alert! Enable THERMAL_PROTECTION_CHAMBER for the final build!"
 #endif

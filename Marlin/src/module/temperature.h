@@ -167,7 +167,9 @@ enum ADCSensorState : char {
     PrepareTemp_7, MeasureTemp_7,
   #endif
   #if HAS_TEMP_ADC_BED
+    #if DISABLED(ENABLE_MULTI_HEATED_BEDS)
     PrepareTemp_BED, MeasureTemp_BED,
+    #endif
   #endif  
   #if HAS_TEMP_ADC_CHAMBER
     PrepareTemp_CHAMBER, MeasureTemp_CHAMBER,

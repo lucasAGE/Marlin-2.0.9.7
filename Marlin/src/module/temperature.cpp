@@ -39,10 +39,7 @@
 //#####################################################################################################
 //########################          TCC LUCAS          ################################################
 //#####################################################################################################
-#if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-
-    #warning "Compilando com suporte a MULTI HEATED BEDS"
-
+#if ENABLED(ENABLE_MULTI_HEATED_BEDS)    
 
     #include <Wire.h>
     #include "ADS1X15.h"
@@ -312,54 +309,28 @@ PGMSTR(str_t_thermal_runaway, STR_T_THERMAL_RUNAWAY);
 PGMSTR(str_t_temp_malfunction, STR_T_MALFUNCTION);
 PGMSTR(str_t_heating_failed, STR_T_HEATING_FAILED);
 
-
-//#####################################################################################################
-//########################          TCC LUCAS          ################################################
-//#####################################################################################################
 /**
  * Macros to include the heater id in temp errors. The compiler's dead-code
  * elimination should (hopefully) optimize out the unused strings.
  */
 
 #if HAS_HEATED_BED
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    // Para H_BED0…H_BED0+N-1
-    #define _BED_FSTR(h)  \
-      (( ((h) >= H_BED0 && (h) < H_BED0 + MULTI_BED_COUNT) \
-        ? GET_TEXT_F(MSG_BED) : )
-  #else
-    // Apenas H_BED
-    #define _BED_FSTR(h)  \
-      ( ((h) == H_BED) \
-        ? GET_TEXT_F(MSG_BED) : )
-  #endif
+  #define _BED_FSTR(h) (h) == H_BED ? GET_TEXT_F(MSG_BED) :
 #else
-  #define _BED_FSTR(h)  /* nada */
+  #define _BED_FSTR(h)
 #endif
-
 #if HAS_HEATED_CHAMBER
   #define _CHAMBER_FSTR(h) (h) == H_CHAMBER ? GET_TEXT_F(MSG_CHAMBER) :
 #else
   #define _CHAMBER_FSTR(h)
 #endif
-
 #if HAS_COOLER
   #define _COOLER_FSTR(h) (h) == H_COOLER ? GET_TEXT_F(MSG_COOLER) :
 #else
   #define _COOLER_FSTR(h)
 #endif
-
 #define _E_FSTR(h,N) ((HOTENDS) > N && (h) == N) ? F(STR_E##N) :
-#define HEATER_FSTR(h)                     \
-  _BED_FSTR(h)                            \
-  _CHAMBER_FSTR(h)                        \
-  _COOLER_FSTR(h)                         \
-  _E_FSTR(h,1) _E_FSTR(h,2)               \
-  _E_FSTR(h,3) _E_FSTR(h,4)               \
-  _E_FSTR(h,5) _E_FSTR(h,6)               \
-  _E_FSTR(h,7)                           \
-  GET_TEXT_F(STR_E0)
-
+#define HEATER_FSTR(h) _BED_FSTR(h) _CHAMBER_FSTR(h) _COOLER_FSTR(h) _E_FSTR(h,1) _E_FSTR(h,2) _E_FSTR(h,3) _E_FSTR(h,4) _E_FSTR(h,5) _E_FSTR(h,6) _E_FSTR(h,7) F(STR_E0)
 //
 // Initialize MAX TC objects/SPI
 //
@@ -1437,10 +1408,10 @@ void Temperature::_temp_error(const heater_id_t heater_id, FSTR_P const serial_m
         case H_CHAMBER: SERIAL_ECHOPGM(STR_HEATER_CHAMBER); break)
 
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-        case H_BED0: SERIAL_ECHOPGM(STR_HEATER_BED_0);   break;
-        case H_BED1: SERIAL_ECHOPGM(STR_HEATER_BED_1);  break;
-        case H_BED2: SERIAL_ECHOPGM(STR_HEATER_BED_2);  break;
-        case H_BED3: SERIAL_ECHOPGM(STR_HEATER_BED_3);  break;
+        case H_BED0: SERIAL_ECHOPGM(STR_HEATER_BED0);   break;
+        case H_BED1: SERIAL_ECHOPGM(STR_HEATER_BED1);  break;
+        case H_BED2: SERIAL_ECHOPGM(STR_HEATER_BED2);  break;
+        case H_BED3: SERIAL_ECHOPGM(STR_HEATER_BED3);  break;
       #else
         case H_BED: SERIAL_ECHOPGM(STR_HEATER_BED); break;
       #endif
@@ -2630,7 +2601,7 @@ void Temperature::updateTemperaturesFromRawValues() {
   //########################          TCC LUCAS          ################################################
   //#####################################################################################################
    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-   /* nothing to do here – celsius já foi atualizado em read_bed_temperatures_ads1115() */
+    read_bed_temperatures_ads1115();
    #else
      temp_bed.celsius = analog_to_celsius_bed(temp_bed.getraw());
    #endif
@@ -3594,10 +3565,7 @@ void Temperature::readings_ready() {
 
   // Update raw values only if they're not already set.
   if (!raw_temps_ready) {
-    update_raw_temperatures();
-    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-      read_bed_temperatures_ads1115();
-    #endif
+    update_raw_temperatures();    
     raw_temps_ready = true;
   }
 
@@ -3853,7 +3821,7 @@ void Temperature::isr() {
             if (soft_pwm_bed[b].count <= pwm_count_tmp)
               state &= ~_BV(BED0_PCF_BIT + b);  // desliga o bit da cama b
           }
-          bedPCF.write8(state);  // write once
+          bedPCF.write8(state);  // write onagora eu queria ce
         #else
           _PWM_LOW(BED, soft_pwm_bed);
         #endif
@@ -4908,7 +4876,7 @@ void Temperature::print_heater_states(
       } //wait_for_all_beds
 
       // Espera uma cama específica apenas se ela estiver aquecendo
-      void Temperature::wait_for_bed_heating(uint8_t bed) //MultiBed {
+      void Temperature::wait_for_bed_heating(uint8_t bed){ //MultiBed {
         if ( isHeatingBed(bed) ) {
           SERIAL_ECHOLNPGM("Wait for bed heating #"); SERIAL_ECHO(bed); SERIAL_EOL();
           // Se quiser mostrar o número da cama no LCD, faça algo como:
