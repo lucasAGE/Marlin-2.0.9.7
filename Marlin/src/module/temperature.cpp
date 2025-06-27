@@ -58,6 +58,7 @@
   // Setup de sensores
   //==============================================================================
   void Temperature::initpcf8574ads1115beds() {
+    #pragma message("🚧 Temperature::initpcf8574ads1115beds compilada")
     
       // Inicializa I²C e dispositivos externos
       Wire.begin();
@@ -79,6 +80,7 @@
   // Converte raw16 do ADS → raw10 (módulo e down-sampling)
   //==============================================================================
   static inline uint16_t raw16_to_raw10(int16_t raw16) {
+    #pragma message("🚧 static inline uint16_t raw16_to_raw10 compilada")
     uint16_t mag = raw16 < 0 ? -raw16 : raw16;
     uint16_t raw10 = mag >> 5;        // reduz 16→10 bits
     return raw10 > 1023 ? 1023 : raw10;
@@ -88,6 +90,7 @@
   // Leitura das temperaturas via ADS1115
   //==============================================================================
   void Temperature::read_bed_temperatures_ads1115() {
+    #pragma message("🚧 Temperature::read_bed_temperatures_ads1115 compilada")
       for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
         // 1) Leia raw16 do ADS
         int16_t raw16 = bedADS.readADC(i);
@@ -106,6 +109,7 @@
   // Controle das Camas pelo PCF8574
   //==============================================================================
   void Temperature::update_bed_pwm_pcf8574() {
+    #pragma message("🚧 Temperature::update_bed_pwm_pcf8574 compilada")
     static uint8_t pwm_step = 0;
     pwm_step = (pwm_step + 1) & ((1 << SOFT_PWM_SCALE) - 1); // ex.: se SOFT_PWM_SCALE==8, 0…255
 
@@ -120,6 +124,7 @@
   }  
   /// Ajusta o target de uma única cama.
   void Temperature::setTargetBed(uint8_t bed, const celsius_t celsius) {
+    #pragma message("🚧 Temperature::setTargetBed compilada")
     if (bed >= MULTI_BED_COUNT) return;
     TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
     temp_bed[bed].target = _MIN(celsius, BED_MAX_TARGET);
@@ -127,6 +132,7 @@
   }
 
 void Temperature::set_all_beds_target(const celsius_t celsius) {
+       #pragma message("🚧 Temperature::set_all_beds_target compilada")
         // Aplique o mesmo setpoint a cada cama de 0 até MULTI_BED_COUNT-1
       for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
         TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
