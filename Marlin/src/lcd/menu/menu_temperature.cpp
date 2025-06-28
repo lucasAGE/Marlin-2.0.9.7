@@ -280,7 +280,7 @@ void menu_temperature() {
     //
     // Cooldown
     //
-    if (TERN0(HAS_HEATED_BED, thermalManager.degTargetBed())) has_heat = true;
+    if (TERN0(HAS_HEATED_BED, thermalManager.degTargetBed(bed))) has_heat = true;
     if (has_heat) ACTION_ITEM(MSG_COOLDOWN, lcd_cooldown);
   #endif
 
