@@ -93,10 +93,25 @@
 #define EXTRAS_BASELINE (40 + INFO_FONT_ASCENT)
 #define STATUS_BASELINE (LCD_PIXEL_HEIGHT - INFO_FONT_DESCENT)
 
+//#####################################################################################################
+//########################          TCC LUCAS          ################################################
+//#####################################################################################################
+
 #if ANIM_HBCC
   enum HeatBits : uint8_t {
-    DRAWBIT_HOTEND,
-    DRAWBIT_BED = HOTENDS,
+    DRAWBIT_HOTEND,   
+    
+    // Se multi-bed estiver habilitado, gera um DRAWBIT para cada cama
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      DRAWBIT_BED0 = HOTENDS,  // começa logo após os hotends
+      DRAWBIT_BED1,
+      DRAWBIT_BED2,
+      DRAWBIT_BED3,
+    #else
+      // fallback single-bed
+      DRAWBIT_BED = HOTENDS,
+    #endif
+
     DRAWBIT_CHAMBER,
     DRAWBIT_CUTTER
   };
@@ -108,11 +123,26 @@
 #else
   #define HOTEND_ALT(N) false
 #endif
+
+
 #if ANIM_BED
-  #define BED_ALT() TEST(draw_bits, DRAWBIT_BED)
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    // Macro que recebe o índice da cama
+    #define BED_ALT(BED_ID) TEST(draw_bits, DRAWBIT_BED0 + (BED_ID))
+  #else
+    // Single-bed mantém o comportamento antigo
+    #define BED_ALT() TEST(draw_bits, DRAWBIT_BED)
+  #endif
 #else
-  #define BED_ALT() false
+  // Se ANIM_BED não estiver ativado, não anima nada
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+    #define BED_ALT(BED_ID) false
+  #else
+    #define BED_ALT() false
+  #endif
 #endif
+
+
 #if ANIM_CHAMBER
   #define CHAMBER_ALT() TEST(draw_bits, DRAWBIT_CHAMBER)
 #else
@@ -320,75 +350,156 @@ FORCE_INLINE void _draw_centered_temp(const celsius_t temp, const uint8_t tx, co
 
 #if DO_DRAW_BED
 
-  // Draw bed bitmap with current and target temperatures
-  FORCE_INLINE void _draw_bed_status(const bool blink) {
-    #if !HEATER_IDLE_HANDLER
-      UNUSED(blink);
-    #endif
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS) 
 
-    const uint8_t tx = STATUS_BED_TEXT_X;
+    #define BED_X_SPACING      30     // espaçamento horizontal entre cada status de cama
 
-    const celsius_t temp = thermalManager.wholeDegBed(),
-                  target = thermalManager.degTargetBed();
-
-    #if ENABLED(STATUS_HEAT_PERCENT) || DISABLED(STATUS_BED_ANIM)
-      const bool isHeat = BED_ALT();
-    #endif
-
-    #if DISABLED(STATUS_BED_ANIM)
-      #define STATIC_BED    true
-      #define BED_DOT       isHeat
-    #else
-      #define STATIC_BED    false
-      #define BED_DOT       false
-    #endif
-
-    if (PAGE_CONTAINS(STATUS_HEATERS_Y, STATUS_HEATERS_BOT)) {
-
-      #define BAR_TALL (STATUS_HEATERS_HEIGHT - 2)
-
-      const float prop = target - 20,
-                  perc = prop > 0 && temp >= 20 ? (temp - 20) / prop : 0;
-      uint8_t tall = uint8_t(perc * BAR_TALL + 0.5f);
-      NOMORE(tall, BAR_TALL);
-
-      // Draw a heating progress bar, if specified
-      #if ENABLED(STATUS_HEAT_PERCENT)
-
-        if (isHeat) {
-          const uint8_t bx = STATUS_BED_X + STATUS_BED_WIDTH;
-          u8g.drawFrame(bx, STATUS_HEATERS_Y, 3, STATUS_HEATERS_HEIGHT);
-          if (tall) {
-            const uint8_t ph = STATUS_HEATERS_HEIGHT - 1 - tall;
-            if (PAGE_OVER(STATUS_HEATERS_Y + ph))
-              u8g.drawVLine(bx + 1, STATUS_HEATERS_Y + ph, tall);
-          }
-        }
-
+    // Desenha bitmap e temperaturas para cada cama em multi-bed
+    FORCE_INLINE void _draw_bed_status(const uint8_t bed, const bool blink) {
+      #if !HEATER_IDLE_HANDLER
+        UNUSED(blink);
       #endif
 
-    } // PAGE_CONTAINS
+      // calcula o X adequado para cada cama
+      const uint8_t tx = STATUS_BED_TEXT_X + bed * BED_X_SPACING;
 
-    if (PAGE_UNDER(7)) {
-      #if HEATER_IDLE_HANDLER
-        const bool dodraw = (blink || !thermalManager.heater_idle[thermalManager.IDLE_INDEX_BED].timed_out);
+      // pega temp e target da cama 'bed'
+      const celsius_t temp   = thermalManager.wholeDegBed(bed),
+                      target = thermalManager.degTargetBed(bed);
+
+      #if ENABLED(STATUS_HEAT_PERCENT) || DISABLED(STATUS_BED_ANIM)
+        const bool isHeat
+          #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+            = BED_ALT(bed);
+          #else
+            = BED_ALT();
+          #endif
+      #endif
+
+      #if DISABLED(STATUS_BED_ANIM)
+        #define STATIC_BED true
+        #define BED_DOT    isHeat
       #else
-        constexpr bool dodraw = true;
+        #define STATIC_BED false
+        #define BED_DOT    false
       #endif
-      if (dodraw) _draw_centered_temp(target, tx, 7);
+
+      // barra de progresso
+      if (PAGE_CONTAINS(STATUS_HEATERS_Y, STATUS_HEATERS_BOT)) {
+        #define BAR_TALL (STATUS_HEATERS_HEIGHT - 2)
+        const float prop = target - 20,
+                    perc = prop > 0 && temp >= 20 ? (temp - 20) / prop : 0;
+        uint8_t tall = uint8_t(perc * BAR_TALL + 0.5f);
+        NOMORE(tall, BAR_TALL);
+
+        #if ENABLED(STATUS_HEAT_PERCENT)
+          if (isHeat) {
+            // quadro ao redor da barra (opcional ajustar X de acordo com bitmap)
+            const uint8_t bx = STATUS_BED_X + bed * (STATUS_BED_WIDTH + BED_SPACING);
+            u8g.drawFrame(bx, STATUS_HEATERS_Y, 3, STATUS_HEATERS_HEIGHT);
+            if (tall) {
+              const uint8_t ph = STATUS_HEATERS_HEIGHT - 1 - tall;
+              if (PAGE_OVER(STATUS_HEATERS_Y + ph))
+                u8g.drawVLine(bx + 1, STATUS_HEATERS_Y + ph, tall);
+            }
+          }
+        #endif
+      }
+
+      // desenha target (em cima)
+      if (PAGE_UNDER(7)) {
+        #if HEATER_IDLE_HANDLER
+          const bool dodraw = blink || !thermalManager.heater_idle[IDLE_INDEX_BED+bed].timed_out;
+        #else
+          constexpr bool dodraw = true;
+        #endif
+        if (dodraw) _draw_centered_temp(target, tx, 7);
+      }
+
+      // desenha temp atual (embaixo)
+      if (PAGE_CONTAINS(28 - INFO_FONT_ASCENT, 28 - 1))
+        _draw_centered_temp(temp, tx, 28);
+
+      // ponto piscante
+      if (STATIC_BED && BED_DOT && PAGE_CONTAINS(17, 19)) {
+        u8g.setColorIndex(0);
+        u8g.drawBox(tx, 20 - 2, 2, 2);
+        u8g.setColorIndex(1);
+      }
     }
 
-    if (PAGE_CONTAINS(28 - INFO_FONT_ASCENT, 28 - 1))
-      _draw_centered_temp(temp, tx, 28);
+  #else // MULTI-BED
 
-    if (STATIC_BED && BED_DOT && PAGE_CONTAINS(17, 19)) {
-      u8g.setColorIndex(0); // set to white on black
-      u8g.drawBox(tx, 20 - 2, 2, 2);
-      u8g.setColorIndex(1); // restore black on white
+    #undef BED_X_SPACING
+
+    // Draw bed bitmap with current and target temperatures
+    FORCE_INLINE void _draw_bed_status(const bool blink) {
+      #if !HEATER_IDLE_HANDLER
+        UNUSED(blink);
+      #endif
+
+      const uint8_t tx = STATUS_BED_TEXT_X;
+
+      const celsius_t temp = thermalManager.wholeDegBed(),
+                    target = thermalManager.degTargetBed();
+
+      #if ENABLED(STATUS_HEAT_PERCENT) || DISABLED(STATUS_BED_ANIM)
+        const bool isHeat = BED_ALT();
+      #endif
+
+      #if DISABLED(STATUS_BED_ANIM)
+        #define STATIC_BED    true
+        #define BED_DOT       isHeat
+      #else
+        #define STATIC_BED    false
+        #define BED_DOT       false
+      #endif
+
+      if (PAGE_CONTAINS(STATUS_HEATERS_Y, STATUS_HEATERS_BOT)) {
+
+        #define BAR_TALL (STATUS_HEATERS_HEIGHT - 2)
+
+        const float prop = target - 20,
+                    perc = prop > 0 && temp >= 20 ? (temp - 20) / prop : 0;
+        uint8_t tall = uint8_t(perc * BAR_TALL + 0.5f);
+        NOMORE(tall, BAR_TALL);
+
+        // Draw a heating progress bar, if specified
+        #if ENABLED(STATUS_HEAT_PERCENT)
+
+          if (isHeat) {
+            const uint8_t bx = STATUS_BED_X + STATUS_BED_WIDTH;
+            u8g.drawFrame(bx, STATUS_HEATERS_Y, 3, STATUS_HEATERS_HEIGHT);
+            if (tall) {
+              const uint8_t ph = STATUS_HEATERS_HEIGHT - 1 - tall;
+              if (PAGE_OVER(STATUS_HEATERS_Y + ph))
+                u8g.drawVLine(bx + 1, STATUS_HEATERS_Y + ph, tall);
+            }
+          }
+
+        #endif
+
+      } // PAGE_CONTAINS
+
+      if (PAGE_UNDER(7)) {
+        #if HEATER_IDLE_HANDLER
+          const bool dodraw = (blink || !thermalManager.heater_idle[thermalManager.IDLE_INDEX_BED].timed_out);
+        #else
+          constexpr bool dodraw = true;
+        #endif
+        if (dodraw) _draw_centered_temp(target, tx, 7);
+      }
+
+      if (PAGE_CONTAINS(28 - INFO_FONT_ASCENT, 28 - 1))
+        _draw_centered_temp(temp, tx, 28);
+
+      if (STATIC_BED && BED_DOT && PAGE_CONTAINS(17, 19)) {
+        u8g.setColorIndex(0); // set to white on black
+        u8g.drawBox(tx, 20 - 2, 2, 2);
+        u8g.setColorIndex(1); // restore black on white
+      }
     }
-
-  }
-
+ #endif // MULTI-BED 
 #endif // DO_DRAW_BED
 
 #if DO_DRAW_CHAMBER
@@ -492,7 +603,23 @@ void MarlinUI::draw_status_screen() {
       #if ANIM_HOTEND
         HOTEND_LOOP() if (thermalManager.isHeatingHotend(e)) SBI(new_bits, DRAWBIT_HOTEND + e);
       #endif
-      if (TERN0(ANIM_BED, thermalManager.isHeatingBed())) SBI(new_bits, DRAWBIT_BED);
+
+      //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
+
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        // Para cada cama, usa um bit distinto DRAWBIT_BED0..N-1
+        for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+          if (thermalManager.isHeatingBed(b))
+            SBI(new_bits, DRAWBIT_BED0 + b);
+        }
+      #else
+        // Único bit de cama (como era antes)
+        if (TERN0(ANIM_BED, thermalManager.isHeatingBed()))
+          SBI(new_bits, DRAWBIT_BED);
+      #endif
+
       #if DO_DRAW_CHAMBER && HAS_HEATED_CHAMBER
         if (thermalManager.isHeatingChamber()) SBI(new_bits, DRAWBIT_CHAMBER);
       #endif
@@ -706,8 +833,21 @@ void MarlinUI::draw_status_screen() {
         u8g.drawBitmapP(STATUS_AMMETER_X, ammetery, STATUS_AMMETER_BYTEWIDTH, ammeterh, (ammeter.current < 0.1f) ? status_ammeter_bmp_mA : status_ammeter_bmp_A);
     #endif
 
+    //#####################################################################################################
+    //########################          TCC LUCAS          ################################################
+    //#####################################################################################################
     // Heated Bed
-    TERN_(DO_DRAW_BED, _draw_bed_status(blink));
+    //TERN_(DO_DRAW_BED, _draw_bed_status(blink)); Single-Bed Legacy
+
+    #if DO_DRAW_BED
+      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+        for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+          _draw_bed_status(b, blink);
+        }
+      #else
+        _draw_bed_status(blink);
+      #endif
+    #endif
 
     // Heated Chamber
     TERN_(DO_DRAW_CHAMBER, _draw_chamber_status());
