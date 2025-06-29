@@ -59,6 +59,7 @@
   //==============================================================================
   void Temperature::initpcf8574ads1115beds() {
     #pragma message("🚧 Temperature::initpcf8574ads1115beds compilada")
+    SERIAL_ECHOLN("ADS1115 and PCF8574 init OK");
     
       // Inicializa I²C e dispositivos externos
       Wire.begin();
@@ -122,7 +123,7 @@
     }
     bedPCF.write8(state);
   }  
-  
+
   /// Ajusta o target de uma única cama.
   void Temperature::setTargetBed(uint8_t bed, const celsius_t celsius) {
     #pragma message("🚧 Temperature::setTargetBed compilada")
