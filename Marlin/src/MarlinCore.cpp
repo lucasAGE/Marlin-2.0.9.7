@@ -1154,8 +1154,7 @@ void setup() {
   //#####################################################################################################
 
  
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    Wire.begin();
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)    
     Temperature::initpcf8574ads1115beds();  // Inicializa sensores e limites das camas
   #endif
 

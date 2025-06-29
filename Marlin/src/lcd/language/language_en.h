@@ -327,7 +327,18 @@ namespace Language_en {
   LSTR MSG_NOZZLE_N                       = _UxGT("Nozzle ~");
   LSTR MSG_NOZZLE_PARKED                  = _UxGT("Nozzle Parked");
   LSTR MSG_NOZZLE_STANDBY                 = _UxGT("Nozzle Standby");
+
+  //#####################################################################################################
+  //########################          TCC LUCAS          ################################################
+  //#####################################################################################################
+  
   LSTR MSG_BED                            = _UxGT("Bed");
+  LSTR MSG_ALL_BEDS                            = _UxGT("All Beds");
+  LSTR MSG_BED0                            = _UxGT("Bed 1");
+  LSTR MSG_BED1                           = _UxGT("Bed 2");
+  LSTR MSG_BED2                            = _UxGT("Bed 3");
+  LSTR MSG_BED3                            = _UxGT("Bed 4");
+
   LSTR MSG_CHAMBER                        = _UxGT("Enclosure");
   LSTR MSG_COOLER                         = _UxGT("Laser Coolant");
   LSTR MSG_COOLER_TOGGLE                  = _UxGT("Toggle Cooler");

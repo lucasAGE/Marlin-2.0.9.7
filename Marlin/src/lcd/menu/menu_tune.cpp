@@ -150,10 +150,10 @@ void menu_tune() {
   
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
       // Se multi-bed estiver ativo, cria um item de ajuste para cada cama
-      EDIT_ITEM_FAST(int3, PSTR("Bed 1"), &thermalManager.temp_bed[0].target, 0, BED_MAX_TARGET, thermalManager.start_watching_bed(0));
-      EDIT_ITEM_FAST(int3, PSTR("Bed 2"), &thermalManager.temp_bed[1].target, 0, BED_MAX_TARGET, thermalManager.start_watching_bed(1));
-      EDIT_ITEM_FAST(int3, PSTR("Bed 3"), &thermalManager.temp_bed[2].target, 0, BED_MAX_TARGET, thermalManager.start_watching_bed(2));
-      EDIT_ITEM_FAST(int3, PSTR("Bed 4"), &thermalManager.temp_bed[3].target, 0, BED_MAX_TARGET, thermalManager.start_watching_bed(3));
+      EDIT_ITEM_FAST(int3, MSG_BED0, &thermalManager.temp_bed[0].target, 0, BED_MAX_TARGET, []{ thermalManager.start_watching_bed(0);});
+      EDIT_ITEM_FAST(int3, MSG_BED1, &thermalManager.temp_bed[1].target, 0, BED_MAX_TARGET, []{ thermalManager.start_watching_bed(1);});
+      EDIT_ITEM_FAST(int3, MSG_BED2, &thermalManager.temp_bed[2].target, 0, BED_MAX_TARGET, []{ thermalManager.start_watching_bed(2);});
+      EDIT_ITEM_FAST(int3, MSG_BED3, &thermalManager.temp_bed[3].target, 0, BED_MAX_TARGET, []{ thermalManager.start_watching_bed(3);});
     #else
       // Fallback single-bed
       EDIT_ITEM_FAST(int3, MSG_BED, &thermalManager.temp_bed.target, 0, BED_MAX_TARGET, thermalManager.start_watching_bed);

@@ -1082,14 +1082,21 @@ class Temperature {
       }
 
       // Inicia a vigilância térmica de runaway
-      static void start_watching_beds(const uint8_t bed) {
+      static void start_watching_bed(const uint8_t bed) {
         TERN_(WATCH_BED, watch_bed[bed].restart(degBed(bed), degTargetBed(bed)));
+      }
+
+      // Reinicia o watchdog de TODAS as camas
+      static void start_watching_all_beds() {
+        for (uint8_t b = 0; b < MULTI_BED_COUNT; b++)
+          start_watching_bed(b);
       }
 
       // ─────────── Helpers “genéricos” ───────────
       // Ajusta o setpoint de TODAS as camas de uma vez
       static void setTargetBed(const celsius_t celsius) {
         set_all_beds_target(celsius);
+        start_watching_all_beds();
       }
       
       // Retorna true se AO MENOS UMA cama ainda estiver aquecendo

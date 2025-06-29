@@ -222,7 +222,18 @@ namespace Language_pt_br {
   LSTR MSG_BED_Z                          = _UxGT("Base Z");
   LSTR MSG_NOZZLE                         = _UxGT("Bocal");
   LSTR MSG_NOZZLE_N                       = _UxGT("Bocal ~");
+   
+  //#####################################################################################################
+  //########################          TCC LUCAS          ################################################
+  //#####################################################################################################
+  
   LSTR MSG_BED                            = _UxGT("Mesa");
+  LSTR MSG_ALL_BEDS                       = _UxGT("Todas as Mesas");
+  LSTR MSG_BED0                           = _UxGT("Mesa 1");
+  LSTR MSG_BED1                           = _UxGT("Mesa 2");
+  LSTR MSG_BED2                           = _UxGT("Mesa 3");
+  LSTR MSG_BED3                           = _UxGT("Mesa 4");
+ 
   LSTR MSG_FAN_SPEED                      = _UxGT("Vel. Ventoinha");
   LSTR MSG_FAN_SPEED_N                    = _UxGT("Vel. Ventoinha ~");
   LSTR MSG_EXTRA_FAN_SPEED                = _UxGT("+Vel. Ventoinha");

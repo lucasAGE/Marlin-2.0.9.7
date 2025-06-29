@@ -122,6 +122,7 @@
     }
     bedPCF.write8(state);
   }  
+  
   /// Ajusta o target de uma única cama.
   void Temperature::setTargetBed(uint8_t bed, const celsius_t celsius) {
     #pragma message("🚧 Temperature::setTargetBed compilada")
@@ -1759,7 +1760,7 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
         _temp_error(hid, FPSTR(str_t_heating_failed), GET_TEXT_F(MSG_HEATING_FAILED_LCD));
         // note: não precisamos reiniciar o watchdog aqui
       } else {
-        start_watching_beds(bed);
+        start_watching_bed(bed);
       }
     #endif
 
@@ -3663,7 +3664,7 @@ public:
  *  - Advance Babysteps
  *  - Endstop polling
  *  - Planner clean buffer
- */
+*/
 void Temperature::isr() {
 
   // Shut down the laser if steppers are inactive for > LASER_SAFETY_TIMEOUT_MS ms
@@ -3690,11 +3691,10 @@ void Temperature::isr() {
     static SoftPWM soft_pwm_hotend[HOTENDS];
   #endif
 
-    //#####################################################################################################
-    //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
+  //#####################################################################################################
+  //########################          TCC LUCAS          ################################################
+  //#####################################################################################################
 
-    
   #if HAS_HEATED_BED
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
       static SoftPWM soft_pwm_bed[MULTI_BED_COUNT];
@@ -3707,7 +3707,7 @@ void Temperature::isr() {
     static SoftPWM soft_pwm_chamber;
   #endif
 
-   #if HAS_COOLER
+  #if HAS_COOLER
     static SoftPWM soft_pwm_cooler;
   #endif
 
@@ -3808,32 +3808,32 @@ void Temperature::isr() {
           _FAN_PWM(7);
         #endif
       #endif
-    }
+     }
     else {
       #define _PWM_LOW(N,S) do{ if (S.count <= pwm_count_tmp) WRITE_HEATER_##N(LOW); }while(0)
       #if HAS_HOTEND
-        #define _PWM_LOW_E(N) _PWM_LOW(N, soft_pwm_hotend[N])
+        #define _PWM_LOW_E(N) _PWM_LOW(N, soft_pwm_hotend[N]);
         REPEAT(HOTENDS, _PWM_LOW_E);
-    #endif
+      #endif
+    
+      //#####################################################################################################
+      //########################          TCC LUCAS          ################################################
+      //#####################################################################################################
 
-    //#####################################################################################################
-    //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
+      #if HAS_HEATED_BED
+        #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+            uint8_t state = bedPCF.read8();  // read once
+            for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
+              if (soft_pwm_bed[b].count <= pwm_count_tmp)
+                state &= ~_BV(BED0_PCF_BIT + b);  // desliga o bit da cama b
+            }
+            bedPCF.write8(state);  // write onagora eu queria ce
+          #else
+            _PWM_LOW(BED, soft_pwm_bed);
+          #endif
+      #endif
 
-    #if HAS_HEATED_BED
-      #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-          uint8_t state = bedPCF.read8();  // read once
-          for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
-            if (soft_pwm_bed[b].count <= pwm_count_tmp)
-              state &= ~_BV(BED0_PCF_BIT + b);  // desliga o bit da cama b
-          }
-          bedPCF.write8(state);  // write onagora eu queria ce
-        #else
-          _PWM_LOW(BED, soft_pwm_bed);
-        #endif
-    #endif
-
-    // Chamber
+      // Chamber
       #if HAS_HEATED_CHAMBER
         _PWM_LOW(CHAMBER, soft_pwm_chamber);
       #endif
@@ -4282,7 +4282,7 @@ void Temperature::isr() {
 
   // Periodically call the planner timer service routine
   planner.isr();
-}
+} // void Temperature::isr()
 
 #if HAS_TEMP_SENSOR
   /**

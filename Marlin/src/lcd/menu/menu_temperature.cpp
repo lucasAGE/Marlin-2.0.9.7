@@ -183,11 +183,40 @@ void menu_temperature() {
       EDIT_ITEM_FAST_N(int3, e, MSG_NOZZLE_STANDBY, &thermalManager.singlenozzle_temp[e], 0, thermalManager.hotend_max_target(0));
   #endif
 
+  //#####################################################################################################
+  //########################          TCC LUCAS          ################################################
+  //#####################################################################################################
   //
   // Bed:
   //
   #if HAS_HEATED_BED
+
+    // Variável temporária para o target global
+    static celsius_t ui_all_beds_target = 0;
+
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+
+      // 1) Preheat all beds
+      EDIT_ITEM_FAST(int3, MSG_ALL_BEDS, &ui_all_beds_target, 0, BED_MAX_TARGET, 
+                    []{ thermalManager.setTargetBed(ui_all_beds_target); });
+
+      // 2–5) Preheat individual beds
+      EDIT_ITEM_FAST(int3, MSG_BED0,
+                    &thermalManager.temp_bed[0].target, 0, BED_MAX_TARGET,
+                    []{ thermalManager.start_watching_bed(0); });
+      EDIT_ITEM_FAST(int3, MSG_BED1,
+                    &thermalManager.temp_bed[1].target, 0, BED_MAX_TARGET,
+                    []{ thermalManager.start_watching_bed(1); });
+      EDIT_ITEM_FAST(int3,  MSG_BED2,
+                    &thermalManager.temp_bed[2].target, 0, BED_MAX_TARGET,
+                    []{ thermalManager.start_watching_bed(2); });
+      EDIT_ITEM_FAST(int3, MSG_BED3,
+                    &thermalManager.temp_bed[3].target, 0, BED_MAX_TARGET,
+                    []{ thermalManager.start_watching_bed(3); });
+
+    #else // Fall-back Single-Bed
     EDIT_ITEM_FAST(int3, MSG_BED, &thermalManager.temp_bed.target, 0, BED_MAX_TARGET, thermalManager.start_watching_bed);
+    #endif // ENABLE_MULTI_HEATED_BEDS
   #endif
 
   //
@@ -280,7 +309,18 @@ void menu_temperature() {
     //
     // Cooldown
     //
-    if (TERN0(HAS_HEATED_BED, thermalManager.degTargetBed(bed))) has_heat = true;
+
+    #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+      for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+        if (thermalManager.degTargetBed(b) > 0) {
+          has_heat = true;
+          break;
+        }
+      }
+    #else // Fall-back Single_bed
+      if (TERN0(HAS_HEATED_BED, thermalManager.degTargetBed())) has_heat = true;
+    #endif //ENABLE_MULTI_HEATED_BEDS
+    
     if (has_heat) ACTION_ITEM(MSG_COOLDOWN, lcd_cooldown);
   #endif
 
