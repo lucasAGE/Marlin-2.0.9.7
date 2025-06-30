@@ -66,6 +66,11 @@
       #include <Wire.h>
       #include "ADS1X15.h"
       #include "PCF8574.h"   
+
+      //#define SIMULAR_FLUXOADSPCF
+      #ifdef SIMULAR_FLUXOADSPCF
+        void simular_temperaturas_e_controle();
+      #endif
 #endif
 typedef enum : int8_t {
   H_REDUNDANT = HID_REDUNDANT,

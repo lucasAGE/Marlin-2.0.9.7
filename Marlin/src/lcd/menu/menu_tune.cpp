@@ -146,8 +146,7 @@ void menu_tune() {
   #if HAS_HEATED_BED
   //
   // Bed:
-  //
-  
+  //  
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
       // Se multi-bed estiver ativo, cria um item de ajuste para cada cama
       EDIT_ITEM_FAST(int3, MSG_BED0, &thermalManager.temp_bed[0].target, 0, BED_MAX_TARGET, []{ thermalManager.start_watching_bed(0);});
