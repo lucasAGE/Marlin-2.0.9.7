@@ -76,7 +76,20 @@
   //==============================================================================
   void Temperature::initpcf8574ads1115beds() {
     #pragma message("🚧 Temperature::initpcf8574ads1115beds compilada")
-  
+
+    // Scanner I²C usando só SERIAL_ECHO/SERIAL_ECHOLN
+    SERIAL_ECHOLN("Iniciando I2C scan...");
+    for (uint8_t addr = 1; addr < 127; ++addr) {
+      Wire.beginTransmission(addr);
+      if (Wire.endTransmission() == 0) {
+        char buf[3];
+        utoa(addr, buf, 16);            // addr em HEX para ASCII
+        SERIAL_ECHO("  Dispositivo @ 0x");
+        SERIAL_ECHO(buf);
+        SERIAL_ECHOLN("");               // só newline
+      }
+    }
+    SERIAL_ECHOLN("Scan I2C concluído.");
   
     // Inicializa I²C e dispositivos externos
     Wire.begin();
