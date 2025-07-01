@@ -41,64 +41,85 @@
 //#####################################################################################################
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)    
 
-    #include <Wire.h>
-    #include "ADS1X15.h"
-    #include "PCF8574.h"
+  #include <Wire.h>
+  #include "ADS1X15.h"
+  #include "PCF8574.h"
 
-    ADS1115 Temperature::bedADS(ADS1115_ADDRESS, &Wire);                // Leitura dos termistores via ADS1115
-    PCF8574 Temperature::bedPCF(PCF8574_ADDRESS, &Wire); // Acionamento dos MOSFETs via PCF8574
+  ADS1115 Temperature::bedADS(ADS1115_ADDRESS, &Wire);                // Leitura dos termistores via ADS1115
+  PCF8574 Temperature::bedPCF(PCF8574_ADDRESS, &Wire); // Acionamento dos MOSFETs via PCF8574
 
-    constexpr uint8_t BED0_PCF_BIT = 0;
-    constexpr uint8_t BED1_PCF_BIT = 1;
-    constexpr uint8_t BED2_PCF_BIT = 2;
-    constexpr uint8_t BED3_PCF_BIT = 3;
-    
+  constexpr uint8_t BED0_PCF_BIT = 0;
+  constexpr uint8_t BED1_PCF_BIT = 1;
+  constexpr uint8_t BED2_PCF_BIT = 2;
+  constexpr uint8_t BED3_PCF_BIT = 3;
 
   //==============================================================================
-  // Setup de sensores
+  // Função auxiliar: checa ACK no I2C
   //==============================================================================
-  void Temperature::initpcf8574ads1115beds() {
-    #pragma message("🚧 Temperature::initpcf8574ads1115beds compilada")
+ 
     
-    
-      // Inicializa I²C e dispositivos externos
-      Wire.begin();
-      //ADS
-      bedADS.begin();
-      SERIAL_ECHOLN("ADS1115 iniciado");
-      bedADS.setGain(2);          // +-2.048V (ideal para NTCs com divisor resistivo)
-      bedADS.setDataRate(4);      // 128 SPS (padrão, estável)
-      bedADS.setMode(1);          // Single-shot
-
-      bedPCF.begin();
-      SERIAL_ECHOLN("PCF8574 iniciado");
-      
-
-
-      // Inicializa limites brutos e mantém watchdogs/parâmetros de PWM zerados
-      for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
-      mintemp_raw_BED[b] = TEMP_SENSOR_BED_RAW_LO_TEMP;
-      maxtemp_raw_BED[b] = TEMP_SENSOR_BED_RAW_HI_TEMP;
-      IF_DISABLED(PIDTEMPBED, next_bed_check_ms[b] = 0;);
-      // NÃO reinicia o watchdog aqui — ele já está com target=0 e next_ms=0
-      // Se quiser forçar a zero, descomente a linha abaixo:
-      // TERN_(WATCH_BED, watch_bed[b].restart(0, 0));
-      }
-      SERIAL_ECHOLN("ADS1115 and PCF8574 init OK");
-  }
 
   //==============================================================================
   // Converte raw16 do ADS → raw10 (módulo e down-sampling)
   //==============================================================================
   static inline uint16_t raw16_to_raw10(int16_t raw16) {
     #pragma message("🚧 static inline uint16_t raw16_to_raw10 compilada")
-    SERIAL_ECHO(">> raw16_to_raw10 input raw16 = "); SERIAL_ECHOLN(raw16);
+    //SERIAL_ECHO(">> raw16_to_raw10 input raw16 = "); SERIAL_ECHOLN(raw16);
     uint16_t mag = raw16 < 0 ? -raw16 : raw16;
     uint16_t raw10 = mag >> 5;        // reduz 16→10 bits
-    SERIAL_ECHO("   converted raw10 = "); SERIAL_ECHOLN(raw10);
+    SERIAL_ECHO("raw16_to_raw10 = "); SERIAL_ECHOLN(raw10);
     return raw10 > 1023 ? 1023 : raw10;    
   }
 
+  //==============================================================================
+  // Setup de sensores
+  //==============================================================================
+  void Temperature::initpcf8574ads1115beds() {
+    #pragma message("🚧 Temperature::initpcf8574ads1115beds compilada")
+  
+  
+    // Inicializa I²C e dispositivos externos
+    Wire.begin();
+    Wire.setClock(400000);
+    //ADS    
+    bedADS.begin();
+    SERIAL_ECHOLN("ADS1115 iniciado");
+    bedADS.setGain(2);          // +-2.048V (ideal para NTCs com divisor resistivo)
+    bedADS.setDataRate(4);      // 128 SPS (padrão, estável)
+    bedADS.setMode(1);          // Single-shot
+    
+    bedPCF.begin();
+    SERIAL_ECHOLN("PCF8574 iniciado");
+    
+
+
+    // Inicializa limites brutos e mantém watchdogs/parâmetros de PWM zerados
+    for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+      mintemp_raw_BED[b] = 0;
+      maxtemp_raw_BED[b] = 32556;
+      IF_DISABLED(PIDTEMPBED, next_bed_check_ms[b] = 0;);
+      SERIAL_ECHO("Bed "); SERIAL_ECHO(b); SERIAL_ECHOLN(" limits RAW setados");
+      // NÃO reinicia o watchdog aqui — ele já está com target=0 e next_ms=0
+      // Se quiser forçar a zero, descomente a linha abaixo:
+      // TERN_(WATCH_BED, watch_bed[b].restart(0, 0));
+    }
+    SERIAL_ECHOLN("ADS1115 and PCF8574 init OK");
+    
+
+    // DEBUG: simulate conversion for each bed
+    raw_adc_t debug_raws[MULTI_BED_COUNT] = { 0, 12000, 24000, 30000};
+    SERIAL_ECHOLN(">> Debug conversion RAW->C");
+    for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
+      const raw_adc_t raw16 = debug_raws[b];
+      uint16_t raw10 = raw16_to_raw10(raw16);
+      celsius_t temp = analog_to_celsius_bed(raw10);
+      SERIAL_ECHO(" Bed["); SERIAL_ECHO(b);
+      SERIAL_ECHO("] raw16="); SERIAL_ECHO(raw16);
+      SERIAL_ECHO("] raw10="); SERIAL_ECHO(raw10);
+      SERIAL_ECHO(" celsius= "); SERIAL_ECHOLN(temp);
+    }    
+  }
+  
   //==============================================================================
   // Leitura das temperaturas via ADS1115
   //==============================================================================
@@ -107,21 +128,23 @@
       for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
         // 1) Leia raw16 do ADS
         int16_t raw16 = bedADS.readADC(i);
-        SERIAL_ECHO("Bed["); SERIAL_ECHO(i); SERIAL_ECHO("] raw16 = ");
-        SERIAL_ECHOLN(raw16);
+        if (raw16 < 0) raw16 = 0;
+       //SERIAL_ECHO("Bed["); SERIAL_ECHO(i); SERIAL_ECHO("] raw16 = ");
+       //SERIAL_ECHOLN(raw16);
 
         // 2) Converta para raw10 (0…1023), eliminando o sinal
         uint16_t raw10 = raw16_to_raw10(raw16);
 
         // 3) Armazene e converta para °C
         temp_bed[i].setraw(raw10);
-        SERIAL_ECHO("Bed["); SERIAL_ECHO(i); SERIAL_ECHO("] setraw = ");
-        SERIAL_ECHOLN(temp_bed[i].getraw());
+        //SERIAL_ECHO("Bed["); SERIAL_ECHO(i); SERIAL_ECHO("] setraw = ");
+        //SERIAL_ECHOLN(temp_bed[i].getraw());
 
         temp_bed[i].celsius = analog_to_celsius_bed(temp_bed[i].getraw());
-        SERIAL_ECHO("Bed["); SERIAL_ECHO(i); SERIAL_ECHO("] celsius = ");
-        SERIAL_ECHOLN(temp_bed[i].celsius);
+        //SERIAL_ECHO("Bed["); SERIAL_ECHO(i); SERIAL_ECHO("] celsius = ");
+        //SERIAL_ECHOLN(temp_bed[i].celsius);
       }
+      SERIAL_ECHOLN("Reading ads1115"); 
   }
 
 
@@ -132,44 +155,47 @@
     #pragma message("🚧 Temperature::update_bed_pwm_pcf8574 compilada")
     static uint8_t pwm_step = 0;
     pwm_step = (pwm_step + 1) & ((1 << SOFT_PWM_SCALE) - 1); // ex.: se SOFT_PWM_SCALE==8, 0…255
-    SERIAL_ECHO(">> update_bed_pwm_pcf8574 pwm_step = ");
-    SERIAL_ECHOLN(pwm_step);
+    //SERIAL_ECHO(">> update_bed_pwm_pcf8574 pwm_step = ");
+    //SERIAL_ECHOLN(pwm_step);
 
     uint8_t state = 0;
-    for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
-      SERIAL_ECHO(" Bed["); SERIAL_ECHO(b);
-      SERIAL_ECHO("] soft_pwm_amount = ");
-      SERIAL_ECHOLN(temp_bed[b].soft_pwm_amount);
+    for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {            
+      //SERIAL_ECHO(" Bed["); SERIAL_ECHO(b);
+      //SERIAL_ECHO("] soft_pwm_amount = ");
+      //SERIAL_ECHOLN(temp_bed[b].soft_pwm_amount);
       // Liga a saída se soft_pwm_amount[b] > pwm_step
       if (temp_bed[b].soft_pwm_amount > pwm_step) {
         state |= _BV(BED0_PCF_BIT + b);
       }
     }
     bedPCF.write8(state);
-    SERIAL_EOL();
-    SERIAL_ECHOLN(">> update_bed_pwm_pcf8574 END\n");
+    //SERIAL_EOL();
+    //SERIAL_ECHOLN(">> update_bed_pwm_pcf8574 END\n");
+    SERIAL_ECHOLN("Updating pwm pcf8574");
   }  
 
   /// Ajusta o target de uma única cama.
   void Temperature::setTargetBed(uint8_t bed, const celsius_t celsius) {
     #pragma message("🚧 Temperature::setTargetBed compilada")
-    SERIAL_ECHO("setTargetBed bed="); SERIAL_ECHO(bed);
-    SERIAL_ECHO(" target="); SERIAL_ECHOLN(celsius);
+    //SERIAL_ECHO("setTargetBed bed="); SERIAL_ECHO(bed);
+    //SERIAL_ECHO(" target="); SERIAL_ECHOLN(celsius);
     if (bed >= MULTI_BED_COUNT) return;
     TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
     temp_bed[bed].target = _MIN(celsius, BED_MAX_TARGET);
     TERN_(WATCH_BED, watch_bed[bed].restart(temp_bed[bed].celsius, temp_bed[bed].target));
+    SERIAL_ECHOLN("Setting specific target bed");
   }
 
 void Temperature::set_all_beds_target(const celsius_t celsius) {
        #pragma message("🚧 Temperature::set_all_beds_target compilada")
-       SERIAL_ECHO("set_all_beds_target target="); SERIAL_ECHOLN(celsius);
+       //SERIAL_ECHO("set_all_beds_target target="); SERIAL_ECHOLN(celsius);
         // Aplique o mesmo setpoint a cada cama de 0 até MULTI_BED_COUNT-1
       for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
         TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
         temp_bed[b].target = _MIN(celsius, BED_MAX_TARGET);
         TERN_(WATCH_BED, watch_bed[b].restart(temp_bed[b].celsius, temp_bed[b].target));
       }  
+      SERIAL_ECHOLN("Setting all target beds");
   }
 #endif //ENABLE_MULTI_HEATED_BEDS
 
@@ -1778,7 +1804,7 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
     
     // 1) Proteção de temperatura máxima
     #if ENABLED(THERMAL_PROTECTION_BED)
-        if (degBed(bed) > BED_MAXTEMP) {
+        if (degBed(bed) > BED_MAXTBED_MAXTEMPEMP) {
           max_temp_error(hid);
         }
     #endif

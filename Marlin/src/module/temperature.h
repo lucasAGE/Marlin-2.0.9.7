@@ -1370,7 +1370,9 @@ class Temperature {
           static void reset_bed_idle_timer(const uint8_t bed) {
             const IdleIndex idx = IdleIndex(IDLE_INDEX_BED0 + bed);
             heater_idle[idx].reset();
+            #if ENABLED(THERMAL_PROTECTION_BED)
             watch_bed[bed].restart(degBed(bed), degTargetBed(bed));
+            #endif
           }
         #else
           /**

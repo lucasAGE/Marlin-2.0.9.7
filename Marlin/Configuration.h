@@ -531,6 +531,7 @@
 #define MULTI_BED_COUNT  4  // pode ser 1, 2, 3 ou 4
 #define PCF8574_ADDRESS   0x20
 #define ADS1115_ADDRESS   0x48
+#define ADSPCF_SIMULATE
 
 #define TEMP_SENSOR_PROBE 0
 #define TEMP_SENSOR_CHAMBER 0
@@ -820,7 +821,7 @@
  */
 
 #define THERMAL_PROTECTION_HOTENDS // Enable thermal protection for all extruders
-#define THERMAL_PROTECTION_BED     // Enable thermal protection for the heated bed
+//#define THERMAL_PROTECTION_BED     // Enable thermal protection for the heated bed
 #define THERMAL_PROTECTION_CHAMBER // Enable thermal protection for the heated chamber
 #define THERMAL_PROTECTION_COOLER  // Enable thermal protection for the laser cooling
 
