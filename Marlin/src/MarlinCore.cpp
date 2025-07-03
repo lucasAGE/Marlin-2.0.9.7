@@ -1655,7 +1655,6 @@ void setup() {
  */
 void loop() {
   do {
-    SERIAL_ECHOLN("Inicio Void Loop");
     idle();
 
     #if ENABLED(SDSUPPORT)

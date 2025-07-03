@@ -531,7 +531,7 @@
 #define MULTI_BED_COUNT  4  // pode ser 1, 2, 3 ou 4
 #define PCF8574_ADDRESS   0x20
 #define ADS1115_ADDRESS   0x48
-#define SIMULAR_FLUXOADSPCF // DEBUG: simulate raw conversion for each bed { 0, 12000, 24000, 30000}  
+//#define SIMULAR_FLUXOADSPCF // DEBUG: simulate raw conversion for each bed { 0, 12000, 24000, 30000}  
 
 #define TEMP_SENSOR_PROBE 0
 #define TEMP_SENSOR_CHAMBER 0
