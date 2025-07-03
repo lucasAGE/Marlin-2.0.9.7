@@ -1149,15 +1149,6 @@ void setup() {
   millis_t serial_connect_timeout = millis() + 1000UL;
   while (!MYSERIAL1.connected() && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
 
-  //#####################################################################################################
-  //########################          TCC LUCAS          ################################################
-  //#####################################################################################################
-
- 
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)    
-    Temperature::initpcf8574ads1115beds();  // Inicializa sensores e limites das camas
-  #endif
-
   #if HAS_MULTI_SERIAL && !HAS_ETHERNET
     #ifndef BAUDRATE_2
       #define BAUDRATE_2 BAUDRATE
@@ -1218,7 +1209,9 @@ void setup() {
 
   TERN_(DYNAMIC_VECTORTABLE, hook_cpu_exceptions()); // If supported, install Marlin exception handlers at runtime
 
+  
   SETUP_RUN(hal.init());
+  SERIAL_ECHOLN(">>hal.init() executado com sucesso");
 
   // Init and disable SPI thermocouples; this is still needed
   #if TEMP_SENSOR_0_IS_MAX_TC || (TEMP_SENSOR_REDUNDANT_IS_MAX_TC && REDUNDANT_TEMP_MATCH(SOURCE, E0))
@@ -1239,6 +1232,7 @@ void setup() {
   #if HAS_TMC220x
     SETUP_RUN(tmc_serial_begin());
   #endif
+  SERIAL_ECHOLN(">>tmc_serial_begin() executado com sucesso");
 
   #if HAS_TMC_SPI
     #if DISABLED(TMC_USE_SW_SPI)
@@ -1313,6 +1307,8 @@ void setup() {
   // (because EEPROM code calls the UI).
 
   SETUP_RUN(ui.init());
+  SERIAL_ECHOLN(">>ui.init()) executado com sucesso");
+
 
   #if PIN_EXISTS(SAFE_POWER)
     #if HAS_DRIVER_SAFE_POWER_PROTECT
@@ -1640,6 +1636,8 @@ void setup() {
   marlin_state = MF_RUNNING;
 
   SETUP_LOG("setup() completed.");
+  SERIAL_ECHOLN("setup() completed.");
+
 }
 
 /**
@@ -1657,6 +1655,7 @@ void setup() {
  */
 void loop() {
   do {
+    SERIAL_ECHOLN("Inicio Void Loop");
     idle();
 
     #if ENABLED(SDSUPPORT)

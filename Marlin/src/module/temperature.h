@@ -65,11 +65,10 @@
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
       #include <Wire.h>
       #include "ADS1X15.h"
-      #include "PCF8574.h"   
-
-      //#define SIMULAR_FLUXOADSPCF
-      #ifdef SIMULAR_FLUXOADSPCF
-        void simular_temperaturas_e_controle();
+      #include "PCF8574.h"  
+      
+      #ifdef SIMULAR_FLUXOADSPCF  
+        
       #endif
 #endif
 typedef enum : int8_t {

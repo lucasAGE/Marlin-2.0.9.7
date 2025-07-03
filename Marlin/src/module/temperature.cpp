@@ -41,10 +41,6 @@
 //#####################################################################################################
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)    
 
-  #include <Wire.h>
-  #include "ADS1X15.h"
-  #include "PCF8574.h"
-
   ADS1115 Temperature::bedADS(ADS1115_ADDRESS, &Wire);                // Leitura dos termistores via ADS1115
   PCF8574 Temperature::bedPCF(PCF8574_ADDRESS, &Wire); // Acionamento dos MOSFETs via PCF8574
 
@@ -52,12 +48,6 @@
   constexpr uint8_t BED1_PCF_BIT = 1;
   constexpr uint8_t BED2_PCF_BIT = 2;
   constexpr uint8_t BED3_PCF_BIT = 3;
-
-  //==============================================================================
-  // Função auxiliar: checa ACK no I2C
-  //==============================================================================
- 
-    
 
   //==============================================================================
   // Converte raw16 do ADS → raw10 (módulo e down-sampling)
@@ -76,7 +66,7 @@
   //==============================================================================
   void Temperature::initpcf8574ads1115beds() {
     #pragma message("🚧 Temperature::initpcf8574ads1115beds compilada")
-
+    
     // Scanner I²C usando só SERIAL_ECHO/SERIAL_ECHOLN
     SERIAL_ECHOLN("Iniciando I2C scan...");
     for (uint8_t addr = 1; addr < 127; ++addr) {
@@ -93,18 +83,16 @@
   
     // Inicializa I²C e dispositivos externos
     Wire.begin();
-    Wire.setClock(400000);
+    Wire.setClock(100000);
     //ADS    
     bedADS.begin();
     SERIAL_ECHOLN("ADS1115 iniciado");
     bedADS.setGain(2);          // +-2.048V (ideal para NTCs com divisor resistivo)
     bedADS.setDataRate(4);      // 128 SPS (padrão, estável)
     bedADS.setMode(1);          // Single-shot
-    
+    //PCF
     bedPCF.begin();
-    SERIAL_ECHOLN("PCF8574 iniciado");
-    
-
+    SERIAL_ECHOLN("PCF8574 iniciado");    
 
     // Inicializa limites brutos e mantém watchdogs/parâmetros de PWM zerados
     for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
@@ -119,6 +107,7 @@
     SERIAL_ECHOLN("ADS1115 and PCF8574 init OK");
     
 
+    #ifdef SIMULAR_FLUXOADSPCF 
     // DEBUG: simulate conversion for each bed
     raw_adc_t debug_raws[MULTI_BED_COUNT] = { 0, 12000, 24000, 30000};
     SERIAL_ECHOLN(">> Debug conversion RAW->C");
@@ -130,35 +119,80 @@
       SERIAL_ECHO("] raw16="); SERIAL_ECHO(raw16);
       SERIAL_ECHO("] raw10="); SERIAL_ECHO(raw10);
       SERIAL_ECHO(" celsius= "); SERIAL_ECHOLN(temp);
-    }    
+    }            
+    #endif    
+
+    // Desliga todas as saídas de uma vez
+    bedPCF.write8(0);
   }
   
   //==============================================================================
   // Leitura das temperaturas via ADS1115
   //==============================================================================
+
+  /* VERSAO 1 DE read_bed_temperatures_ads1115
   void Temperature::read_bed_temperatures_ads1115() {
     #pragma message("🚧 Temperature::read_bed_temperatures_ads1115 compilada")
       for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
         // 1) Leia raw16 do ADS
         int16_t raw16 = bedADS.readADC(i);
         if (raw16 < 0) raw16 = 0;
-       //SERIAL_ECHO("Bed["); SERIAL_ECHO(i); SERIAL_ECHO("] raw16 = ");
-       //SERIAL_ECHOLN(raw16);
+       SERIAL_ECHO("Bed["); SERIAL_ECHO(i); SERIAL_ECHO("] raw16 = ");
+       SERIAL_ECHOLN(raw16);
 
         // 2) Converta para raw10 (0…1023), eliminando o sinal
         uint16_t raw10 = raw16_to_raw10(raw16);
 
         // 3) Armazene e converta para °C
         temp_bed[i].setraw(raw10);
-        //SERIAL_ECHO("Bed["); SERIAL_ECHO(i); SERIAL_ECHO("] setraw = ");
-        //SERIAL_ECHOLN(temp_bed[i].getraw());
+        SERIAL_ECHO("Bed["); SERIAL_ECHO(i); SERIAL_ECHO("] setraw = ");
+        SERIAL_ECHOLN(temp_bed[i].getraw());
 
         temp_bed[i].celsius = analog_to_celsius_bed(temp_bed[i].getraw());
-        //SERIAL_ECHO("Bed["); SERIAL_ECHO(i); SERIAL_ECHO("] celsius = ");
-        //SERIAL_ECHOLN(temp_bed[i].celsius);
+        SERIAL_ECHO("Bed["); SERIAL_ECHO(i); SERIAL_ECHO("] celsius = ");
+        SERIAL_ECHOLN(temp_bed[i].celsius);
       }
       SERIAL_ECHOLN("Reading ads1115"); 
+  }*/
+
+  // VERSAO 2 DE read_bed_temperatures_ads1115
+  void Temperature::read_bed_temperatures_ads1115() {
+  #pragma message("🚧 Temperature::read_bed_temperatures_ads1115 non-blocking compilada")
+
+  const uint16_t timeout = 50;  // tempo máximo em ms
+
+  for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
+    // 1) Dispara a conversão no canal i
+    bedADS.requestADC(i);
+
+    // 2) Aguarda conversão pronta com timeout
+    unsigned long start = millis();
+    while (bedADS.isBusy()) {           // ou !bedADS.isReady()
+      if (millis() - start > timeout) {
+        SERIAL_ECHO("!! Timeout ADS1115 canal ");SERIAL_ECHOLN(int(i));
+        break;
+      }
+    }
+
+    // 3) Lê o raw16
+    int16_t raw16 = bedADS.getValue();
+    if (raw16 < 0) raw16 = 0;
+    SERIAL_ECHO("Bed[");SERIAL_ECHO(int(i));SERIAL_ECHO("] raw16 = ");SERIAL_ECHOLN(raw16);
+
+    // 4) Converte para raw10
+    uint16_t raw10 = raw16_to_raw10(raw16);
+    SERIAL_ECHO("Bed[");SERIAL_ECHO(int(i));SERIAL_ECHO("] raw10 = ");SERIAL_ECHOLN(raw10);    
+
+    // 5) Atualiza objeto e calcula °C
+    temp_bed[i].setraw(raw10);
+    SERIAL_ECHO("Bed[");SERIAL_ECHO(int(i));SERIAL_ECHO("] getraw() = ");SERIAL_ECHOLN(temp_bed[i].getraw());      
+
+    temp_bed[i].celsius = analog_to_celsius_bed(raw10);
+    SERIAL_ECHO("Bed[");SERIAL_ECHO(int(i));SERIAL_ECHO("] celsius = ");SERIAL_ECHOLN(temp_bed[i].celsius);    
   }
+  SERIAL_ECHOLN("read_bed_temperatures_ads1115() concluIda");
+  }
+
 
 
   //==============================================================================
@@ -1811,8 +1845,7 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
    void Temperature::manage_heated_beds(const uint8_t bed, const millis_t &ms) {
     // Heater ID correspondente
-    const heater_id_t hid     = heater_id_t(H_BED0 - bed);
-    const uint8_t runaway_idx = RUNAWAY_IND_BED0 + bed;
+    const heater_id_t hid     = heater_id_t(H_BED0 - bed);   
     const Temperature::IdleIndex idle_idx = Temperature::idle_index_for_id(hid);
     
     // 1) Proteção de temperatura máxima
@@ -1854,7 +1887,8 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
 
     TERN_(HEATER_IDLE_HANDLER, heater_idle[idle_idx].update(ms));
 
-    #if ENABLED(THERMAL_PROTECTION_BED)          
+    #if ENABLED(THERMAL_PROTECTION_BED)
+      const uint8_t runaway_idx = RUNAWAY_IND_BED0 + bed;        
       tr_state_machine[runaway_idx].run(
           temp_bed[bed].celsius,
           temp_bed[bed].target,
@@ -2799,9 +2833,7 @@ void Temperature::init() {
   //======================= Multi-Bed / ADS1115 + PCF8574 =======================
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     // Multi-bed: ADS1115 + PCF8574
-    initpcf8574ads1115beds();
-    // Desliga todas as saídas de uma vez
-    bedPCF.write8(0);
+    initpcf8574ads1115beds();  
   #elif HAS_HEATED_BED
     // Fallback para cama única (código original)
     #ifdef BOARD_OPENDRAIN_MOSFETS
@@ -3096,12 +3128,14 @@ void Temperature::init() {
   //======================= Ajustar limites raw de camas e outros sensores =======================
   #if HAS_HEATED_BED
     #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+     SERIAL_ECHOLN(">> Iniciando leitura multi-beds init");
       for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
         while ( analog_to_celsius_bed(mintemp_raw_BED[b]) < BED_MINTEMP )
           mintemp_raw_BED[b] += TEMPDIR(BED) * OVERSAMPLENR;
         while ( analog_to_celsius_bed(maxtemp_raw_BED[b]) > BED_MAXTEMP )
           maxtemp_raw_BED[b] -= TEMPDIR(BED) * OVERSAMPLENR;
-      }
+      } 
+      SERIAL_ECHOLN(">> Fim leitura multi-beds");
     #else
       while ( analog_to_celsius_bed(mintemp_raw_BED) < BED_MINTEMP )
         mintemp_raw_BED += TEMPDIR(BED) * OVERSAMPLENR;
@@ -3148,6 +3182,7 @@ void Temperature::init() {
       #endif
     );
   #endif
+  SERIAL_ECHOLN(">> Finalizando Temperature::init()"); 
 }
 
 #if HAS_THERMAL_PROTECTION
