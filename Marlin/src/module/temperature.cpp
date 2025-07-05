@@ -2322,8 +2322,8 @@ void Temperature::task() {
       }
     #endif
   #endif
-  
-  delay(250);  // pausa 250 ms antes do próximo ciclo
+   
+  delay(1000);
   UNUSED(ms);  
 }
 

@@ -774,7 +774,7 @@ inline void manage_inactivity(const bool no_stepper_sleep=false) {
  *  - Handle Joystick jogging
  */
 void idle(bool no_stepper_sleep/*=false*/) {
-  SERIAL_ECHOLN("idle iniciado.");
+  SERIAL_ECHOLNPGM("void idle iniciado.");
   #if ENABLED(MARLIN_DEV_MODE)
     static uint16_t idle_depth = 0;
     if (++idle_depth > 5) SERIAL_ECHOLNPGM("idle() call depth: ", idle_depth);
@@ -802,7 +802,7 @@ void idle(bool no_stepper_sleep/*=false*/) {
   #endif
 
   // Run HAL idle tasks
-  SERIAL_ECHOLN("idle tasks iniciado.");
+  SERIAL_ECHOLNPGM("hal idle tasks iniciado.");
   hal.idletask();
 
   // Check network connection
@@ -876,7 +876,9 @@ void idle(bool no_stepper_sleep/*=false*/) {
 
   IDLE_DONE:
   TERN_(MARLIN_DEV_MODE, idle_depth--);
-  SERIAL_ECHOLN("idle terminado.");
+  
+  SERIAL_ECHOLNPGM("void idle terminado.");
+  delay(1000);
   return;
 }
 
@@ -1310,8 +1312,7 @@ void setup() {
   // (because EEPROM code calls the UI).
 
   SETUP_RUN(ui.init());
-  SERIAL_ECHOLN(">>ui.init()) executado com sucesso");
-
+  SERIAL_ECHOLNPGM(">>ui.init()) executado com sucesso");
 
   #if PIN_EXISTS(SAFE_POWER)
     #if HAS_DRIVER_SAFE_POWER_PROTECT
@@ -1638,7 +1639,7 @@ void setup() {
 
   marlin_state = MF_RUNNING;
   
-  SERIAL_ECHOLN("setup() completed.");
+  SERIAL_ECHOLNPGM("setup() completed.");
 }
 
 /**
@@ -1672,6 +1673,7 @@ void loop() {
     endstops.event_handler();
 
     TERN_(HAS_TFT_LVGL_UI, printer_state_polling());
+    delay(1000);
 
   } while (ENABLED(__AVR__)); // Loop forever on slower (AVR) boards
 }
