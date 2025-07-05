@@ -105,6 +105,8 @@
       // Se quiser forçar a zero, descomente a linha abaixo:
       // TERN_(WATCH_BED, watch_bed[b].restart(0, 0));
     }
+    SERIAL_ECHO("PCF8574 isConnected(): ");
+    SERIAL_ECHOLN(bedPCF.isConnected());
     SERIAL_ECHOLN("ADS1115 and PCF8574 init OK");
     
 
@@ -256,7 +258,9 @@
     // Escrita manual com checagem de erro
     Wire.beginTransmission(PCF8574_ADDRESS);
     Wire.write(state);
-    uint8_t err = Wire.endTransmission();
+
+
+    uint8_t err = Wire.endTransmission();    
     if (err) {
       SERIAL_ECHO("!! PCF8574 write error: ");SERIAL_ECHOLN(err); 
       i2c_bus_recover();   // desengrava o barramento
