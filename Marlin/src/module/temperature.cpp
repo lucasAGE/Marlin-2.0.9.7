@@ -2223,6 +2223,7 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
  *  - Update the heated bed PID output value
  */
 void Temperature::task() {
+  SERIAL_ECHOLN("task iniciado.");
   if (marlin_state == MF_INITIALIZING) return hal.watchdog_refresh(); // If Marlin isn't started, at least reset the watchdog!
 
   static bool no_reentry = false;  // Prevent recursion
@@ -2307,6 +2308,7 @@ void Temperature::task() {
   #endif
 
   UNUSED(ms);
+  SERIAL_ECHOLN("task finalizado.");
 }
 
 #define TEMP_AD595(RAW)  ((RAW) * 5.0 * 100.0 / float(HAL_ADC_RANGE) / (OVERSAMPLENR) * (TEMP_SENSOR_AD595_GAIN) + TEMP_SENSOR_AD595_OFFSET)
