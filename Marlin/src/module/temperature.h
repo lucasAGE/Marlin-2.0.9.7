@@ -1141,6 +1141,11 @@ class Temperature {
       static void initpcf8574ads1115beds();
       static void read_bed_temperatures_ads1115();
       static void update_bed_pwm_pcf8574();
+      // Marcação de camas com PWM “sujo”      
+      /** Se houve alteração no PWM das camas desde a última medição */
+      static bool beds_pwm_dirty;
+      /** Último valor de soft_pwm_amount registrado de cada cama */
+      static uint8_t last_soft_pwm[MULTI_BED_COUNT];    
                         
       static bool wait_for_bed(
       uint8_t       bed,

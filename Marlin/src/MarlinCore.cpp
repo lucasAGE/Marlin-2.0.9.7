@@ -802,6 +802,7 @@ void idle(bool no_stepper_sleep/*=false*/) {
   #endif
 
   // Run HAL idle tasks
+  SERIAL_ECHOLN("idle tasks iniciado.");
   hal.idletask();
 
   // Check network connection

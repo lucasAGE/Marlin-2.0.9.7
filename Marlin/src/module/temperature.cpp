@@ -196,6 +196,8 @@
   SERIAL_ECHOLN("read_bed_temperatures_ads1115() concluIda");
   }
 
+  
+
   //==============================================================================
   // Controle das Camas pelo PCF8574
   //==============================================================================
@@ -227,6 +229,10 @@
       SERIAL_ECHOLN("Updating pwm pcf8574");
     }
   }  
+
+  // Inicializa a flag e os últimos PWMs antes de qualquer chamada a task()
+  bool Temperature::beds_pwm_dirty = false;
+  uint8_t Temperature::last_soft_pwm[MULTI_BED_COUNT] = { 0 };
 
   /// Ajusta o target de uma única cama.
   void Temperature::setTargetBed(uint8_t bed, const celsius_t celsius) {
@@ -1940,8 +1946,10 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
 
     } while (false);
 
-    // 5) Push PWM update to PCF8574
-    update_bed_pwm_pcf8574();
+   if (temp_bed[bed].soft_pwm_amount != last_soft_pwm[bed]) {
+    last_soft_pwm[bed] = temp_bed[bed].soft_pwm_amount;
+    beds_pwm_dirty = true;
+   }
   }
 
   #else // ENABLE_MULTI_HEATED_BEDS - single-bed fallback
@@ -2286,9 +2294,17 @@ void Temperature::task() {
     for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
       manage_heated_beds(b, ms);
     }
+
+    // Apenas uma gravação no barramento:
+    if (beds_pwm_dirty) {
+      update_bed_pwm_pcf8574();
+      beds_pwm_dirty = false;
+    }    
+
   #elif HAS_HEATED_BED
     manage_heated_bed(ms);
   #endif
+  
 
   // Handle Heated Chamber Temp Errors, Heating Watch, etc.
   TERN_(HAS_HEATED_CHAMBER, manage_heated_chamber(ms));
@@ -2307,8 +2323,7 @@ void Temperature::task() {
     #endif
   #endif
 
-  UNUSED(ms);
-  SERIAL_ECHOLN("task finalizado.");
+  UNUSED(ms);  
 }
 
 #define TEMP_AD595(RAW)  ((RAW) * 5.0 * 100.0 / float(HAL_ADC_RANGE) / (OVERSAMPLENR) * (TEMP_SENSOR_AD595_GAIN) + TEMP_SENSOR_AD595_OFFSET)
