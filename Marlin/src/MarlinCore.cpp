@@ -774,6 +774,7 @@ inline void manage_inactivity(const bool no_stepper_sleep=false) {
  *  - Handle Joystick jogging
  */
 void idle(bool no_stepper_sleep/*=false*/) {
+  SERIAL_ECHOLN("idle iniciado.");
   #if ENABLED(MARLIN_DEV_MODE)
     static uint16_t idle_depth = 0;
     if (++idle_depth > 5) SERIAL_ECHOLNPGM("idle() call depth: ", idle_depth);
@@ -874,6 +875,7 @@ void idle(bool no_stepper_sleep/*=false*/) {
 
   IDLE_DONE:
   TERN_(MARLIN_DEV_MODE, idle_depth--);
+  SERIAL_ECHOLN("idle terminado.");
   return;
 }
 
@@ -1634,10 +1636,8 @@ void setup() {
   #endif
 
   marlin_state = MF_RUNNING;
-
-  SETUP_LOG("setup() completed.");
+  
   SERIAL_ECHOLN("setup() completed.");
-
 }
 
 /**

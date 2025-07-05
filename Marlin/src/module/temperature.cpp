@@ -69,7 +69,7 @@
   
     // Inicializa I²C e dispositivos externos
     Wire.begin();
-    Wire.setClock(100000);
+    Wire.setClock(10000);
 
     // Scanner I²C usando só SERIAL_ECHO/SERIAL_ECHOLN
     SERIAL_ECHOLN("Iniciando I2C scan...");
@@ -88,8 +88,8 @@
     //ADS    
     bedADS.begin();
     SERIAL_ECHOLN("ADS1115 iniciado");
-    bedADS.setGain(1);          // +-2.048V (ideal para NTCs com divisor resistivo)
-    bedADS.setDataRate(4);      // 128 SPS (padrão, estável)
+    bedADS.setGain(2);          // +-2.048V (ideal para NTCs com divisor resistivo)
+    bedADS.setDataRate(0);      // 128 SPS (padrão, estável)
     bedADS.setMode(1);          // Single-shot
     //PCF
     bedPCF.begin();
@@ -196,44 +196,6 @@
   SERIAL_ECHOLN("read_bed_temperatures_ads1115() concluIda");
   }
 
-  //=============================================================================
-  // I²C Bus Recovery
-  // Gera 9 pulsos em SCL + condição de STOP para “desgrudar” escravos que
-  // seguraram SDA em LOW. Baseado no NXP AN4061.
-  //=============================================================================
-  static void i2c_bus_recover() {
-    // Ajuste estes defines se os nomes de pino forem diferentes
-    #ifndef SDA_PIN
-      #define SDA_PIN SDA
-    #endif
-    #ifndef SCL_PIN
-      #define SCL_PIN SCL
-    #endif
-
-    // 1) Põe SDA em pull-up e SCL em HIGH
-    pinMode(SDA_PIN, INPUT_PULLUP);
-    pinMode(SCL_PIN, OUTPUT);
-    digitalWrite(SCL_PIN, HIGH);
-
-    // 2) Gera 9 pulsos em SCL (um por cada bit + ACK)
-    for (uint8_t i = 0; i < 9; i++) {
-      digitalWrite(SCL_PIN, LOW);
-      delayMicroseconds(10);
-      digitalWrite(SCL_PIN, HIGH);
-      delayMicroseconds(10);
-    }
-
-    // 3) Força condição de STOP: SDA de LOW → HIGH com SCL em HIGH
-    pinMode(SDA_PIN, OUTPUT);
-    digitalWrite(SDA_PIN, LOW);
-    delayMicroseconds(10);
-    digitalWrite(SDA_PIN, HIGH);
-
-    // 4) Restaura SDA como entrada com pull-up
-    pinMode(SDA_PIN, INPUT_PULLUP);
-  }
-
-
   //==============================================================================
   // Controle das Camas pelo PCF8574
   //==============================================================================
@@ -259,20 +221,11 @@
     Wire.beginTransmission(PCF8574_ADDRESS);
     Wire.write(state);
 
-
     uint8_t err = Wire.endTransmission();    
     if (err) {
-      SERIAL_ECHO("!! PCF8574 write error: ");SERIAL_ECHOLN(err); 
-      i2c_bus_recover();   // desengrava o barramento
-      Wire.begin();        // re-inicializa o I²C normalmente
-      Wire.setClock(100000);
+      SERIAL_ECHO("!! PCF8574 write error: ");SERIAL_ECHOLN(err);          
+      SERIAL_ECHOLN("Updating pwm pcf8574");
     }
-
-    // Se quiser debug, use só quando realmente precisar:
-    #ifdef DEBUG_BEDS
-      SERIAL_ECHO("Bed PWM state: 0b", state)S
-    #endif  
-    SERIAL_ECHOLN("Updating pwm pcf8574");
   }  
 
   /// Ajusta o target de uma única cama.
@@ -287,7 +240,7 @@
     SERIAL_ECHOLN("Setting specific target bed");
   }
 
-void Temperature::set_all_beds_target(const celsius_t celsius) {
+  void Temperature::set_all_beds_target(const celsius_t celsius) {
        #pragma message("🚧 Temperature::set_all_beds_target compilada")
        //SERIAL_ECHO("set_all_beds_target target="); SERIAL_ECHOLN(celsius);
         // Aplique o mesmo setpoint a cada cama de 0 até MULTI_BED_COUNT-1
