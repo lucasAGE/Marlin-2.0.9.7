@@ -72,7 +72,7 @@
     Wire.setClock(10000);
 
     // Scanner I²C usando só SERIAL_ECHO/SERIAL_ECHOLN
-    SERIAL_ECHOLN("Iniciando I2C scan...");
+    SERIAL_ECHOLNPGM("Iniciando I2C scan...");
     for (uint8_t addr = 1; addr < 127; ++addr) {
       Wire.beginTransmission(addr);
       if (Wire.endTransmission() == 0) {
@@ -2231,7 +2231,7 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
  *  - Update the heated bed PID output value
  */
 void Temperature::task() {
-  SERIAL_ECHOLN("task iniciado.");
+  SERIAL_ECHOLNPGM("task iniciado.");
   if (marlin_state == MF_INITIALIZING) return hal.watchdog_refresh(); // If Marlin isn't started, at least reset the watchdog!
 
   static bool no_reentry = false;  // Prevent recursion
@@ -2322,7 +2322,8 @@ void Temperature::task() {
       }
     #endif
   #endif
-
+  
+  delay(250);  // pausa 250 ms antes do próximo ciclo
   UNUSED(ms);  
 }
 
