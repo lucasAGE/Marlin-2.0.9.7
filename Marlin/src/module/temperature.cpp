@@ -78,7 +78,7 @@
       if (Wire.endTransmission() == 0) {
         char buf[3];
         utoa(addr, buf, 16);            // addr em HEX para ASCII
-        SERIAL_ECHOPGM("  Dispositivo @ 0x");
+        SERIAL_ECHO("  Dispositivo @ 0x");
         SERIAL_ECHO(buf);
         SERIAL_ECHOLNPGM("");               // só newline
       }
@@ -162,7 +162,7 @@
   void Temperature::read_bed_temperatures_ads1115() {
   #pragma message("🚧 Temperature::read_bed_temperatures_ads1115 non-blocking compilada")
 
-  const uint16_t timeout = 50;  // tempo máximo em ms
+  const uint16_t timeout = 100;  // tempo máximo em ms
 
   for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
     // 1) Dispara a conversão no canal i
