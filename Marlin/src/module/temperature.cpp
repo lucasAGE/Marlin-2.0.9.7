@@ -69,7 +69,7 @@
   
     // Inicializa I²C e dispositivos externos
     Wire.begin();
-    Wire.setClock(10000);
+    Wire.setClock(WIRE_CLOCK_I2C);
 
     // Scanner I²C usando só SERIAL_ECHO/SERIAL_ECHOLN
     SERIAL_ECHOLNPGM("Iniciando I2C scan...");
@@ -166,19 +166,43 @@
 
   for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
     // 1) Dispara a conversão no canal i
+    unsigned long t0 = micros();
+    SERIAL_ECHOLNPGM("→ requestADC canal "); SERIAL_ECHOLN(int(i));
     bedADS.requestADC(i);
+    SERIAL_ECHOPGM("← requestADC demorou (us): "); SERIAL_ECHOLN(micros() - t0);
 
-    // 2) Aguarda conversão pronta com timeout
+     // 2) Aguarda conversão pronta com timeout e faz bus-recovery em caso de falha
     unsigned long start = millis();
-    while (bedADS.isBusy()) {           // ou !bedADS.isReady()
+    bool timeouted = false;
+    while (bedADS.isBusy()) {
       if (millis() - start > timeout) {
-        SERIAL_ECHOPGM("!! Timeout ADS1115 canal ");SERIAL_ECHOLN(int(i));
+        SERIAL_ECHOPGM("!! Timeout ADS1115 canal "); SERIAL_ECHOLN(i);
+        timeouted = true;
+
+        // — BUS RECOVERY em 9 pulsos manuais de SCL — 
+        SET_OUTPUT(I2C_SCL_PIN); 
+        for (uint8_t k = 0; k < 9; k++) {
+          WRITE(I2C_SCL_PIN, HIGH);
+          delay(5);  // ~5 µs
+          WRITE(I2C_SCL_PIN, LOW);
+          delay(5);
+        }
+        SET_INPUT(I2C_SCL_PIN);   // ou INPUT_PULLUP, conforme seu core I2C
+        // Re-inicializa o hardware I²C
+        Wire.begin();
+        Wire.setClock(WIRE_CLOCK_I2C);
         break;
       }
     }
+    SERIAL_ECHOPGM("← isBusy() fim em (ms): "); SERIAL_ECHOLN(millis() - start);
+
+    // 3) Se deu timeout, pule a leitura para não travar
+    if (timeouted) continue; 
 
     // 3) Lê o raw16
+    t0 = micros();
     int16_t raw16 = bedADS.getValue();
+    SERIAL_ECHOPGM("← getValue() demorou (us): "); SERIAL_ECHOLN(micros() - t0);
     if (raw16 < 0) raw16 = 0;
     SERIAL_ECHOPGM("Bed[");SERIAL_ECHO(int(i));SERIAL_ECHOPGM("] raw16 = ");SERIAL_ECHOLN(raw16);
 
@@ -195,8 +219,6 @@
   }
   SERIAL_ECHOLN("read_bed_temperatures_ads1115() concluIda");
   }
-
-  
 
   //==============================================================================
   // Controle das Camas pelo PCF8574
@@ -3207,7 +3229,7 @@ void Temperature::init() {
       #endif
     );
   #endif
-  SERIAL_ECHOLN(">> Finalizando Temperature::init()"); 
+  SERIAL_ECHOLNPGM(">> Finalizando Temperature::init()"); 
 }
 
 #if HAS_THERMAL_PROTECTION
