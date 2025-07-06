@@ -35,10 +35,6 @@ void safe_delay(millis_t ms) {
   thermalManager.task(); // This keeps us safe if too many small safe_delay() calls are made
 }
 
-extern "C" void delay(uint32_t ms) {
-  HAL_Delay(ms);
-}
-
 // A delay to provide brittle hosts time to receive bytes
 #if ENABLED(SERIAL_OVERRUN_PROTECTION)
 
