@@ -64,7 +64,7 @@
 
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
   #include <Wire.h>
-  #include "ADS1X15.h"
+  #include <Adafruit_ADS1X15.h> 
   #include "PCF8574.h"           
 #endif
 typedef enum : int8_t {
@@ -713,19 +713,7 @@ class Temperature {
         /// Timestamp em ms de quando disparou a conversão pendente
         static unsigned long pending_ads_start_ms;
         /// Tempo mínimo de conversão em ms (128 SPS ≃ 8 ms)
-        /*
-          |  data rate  |  ADS101x  |  ADS111x  |   Notes   |
-          |:-----------:|----------:|----------:|:---------:|
-          |     0       |   128     |    8      |  slowest  |
-          |     1       |   250     |    16     |           |
-          |     2       |   490     |    32     |           |
-          |     3       |   920     |    64     |           |
-          |     4       |   1600    |    128    |  default  |
-          |     5       |   2400    |    250    |           |
-          |     6       |   3300    |    475    |           |
-          |     7       |   3300    |    860    |  fastest  |
-          */
-          
+       
         static constexpr uint16_t ADS_CONV_MS = 150;//ms
       #else
         static raw_adc_t mintemp_raw_BED;
@@ -1151,7 +1139,7 @@ class Temperature {
       static void set_all_beds_target(const celsius_t celsius);           
     
       // I²C e periferais só no modo multi-bed
-      static ADS1115 bedADS;
+      static Adafruit_ADS1115 bedADS;
       static PCF8574 bedPCF;
         
       // Inicialização e leitura I²C

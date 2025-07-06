@@ -41,7 +41,7 @@
 //#####################################################################################################
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)    
 
-  ADS1115 Temperature::bedADS(ADS1115_ADDRESS, &Wire);                // Leitura dos termistores via ADS1115
+  Adafruit_ADS1115 Temperature::bedADS; // Leitura dos termistores via ADS1115
   PCF8574 Temperature::bedPCF(PCF8574_ADDRESS, &Wire); // Acionamento dos MOSFETs via PCF8574
 
   constexpr uint8_t BED0_PCF_BIT = 0;
@@ -90,22 +90,54 @@
     }
     SERIAL_ECHOLNPGM("Scan I2C concluído.");
 
-    //ADS    
-    bedADS.begin();
-    SERIAL_ECHOLNPGM("ADS1115 iniciado");
-    bedADS.setGain(2);          // +-2.048V (ideal para NTCs com divisor resistivo)
-    bedADS.setDataRate(0);      // 128 SPS (padrão, estável)
-    bedADS.setMode(1);          // Single-shot
-    //PCF
-    bedPCF.begin();
-    SERIAL_ECHOLNPGM("PCF8574 iniciado");    
+    // 2) ADS1115 Begin
+    if (!bedADS.begin(ADS1X15_ADDRESS, &Wire)) {          // begin(adr, bus) :contentReference[oaicite:0]{index=0}
+      SERIAL_ECHOLNPGM("Erro ao iniciar Adafruit ADS1115");
+    }
+    else {
+      SERIAL_ECHOLNPGM("Adafruit ADS1115 iniciado");
+    }
+    bedADS.setGain(GAIN_TWO);                       // ±6.144V default :contentReference[oaicite:1]{index=1}
+    bedADS.setDataRate(RATE_ADS1115_128SPS);              // 128 SPS :contentReference[oaicite:2]{index=2}
+
+    /*
+    #define RATE_ADS1115_8SPS (0x0000)   ///< 8 samples per second
+    #define RATE_ADS1115_16SPS (0x0020)  ///< 16 samples per second
+    #define RATE_ADS1115_32SPS (0x0040)  ///< 32 samples per second
+    #define RATE_ADS1115_64SPS (0x0060)  ///< 64 samples per second
+    #define RATE_ADS1115_128SPS (0x0080) ///< 128 samples per second (default)
+    #define RATE_ADS1115_250SPS (0x00A0) ///< 250 samples per second
+    #define RATE_ADS1115_475SPS (0x00C0) ///< 475 samples per second
+    #define RATE_ADS1115_860SPS (0x00E0) ///< 860 samples per second
+    
+    Gain settings 
+    typedef enum {
+      GAIN_TWOTHIRDS = ADS1X15_REG_CONFIG_PGA_6_144V,
+      GAIN_ONE = ADS1X15_REG_CONFIG_PGA_4_096V,
+      GAIN_TWO = ADS1X15_REG_CONFIG_PGA_2_048V,
+      GAIN_FOUR = ADS1X15_REG_CONFIG_PGA_1_024V,
+      GAIN_EIGHT = ADS1X15_REG_CONFIG_PGA_0_512V,
+      GAIN_SIXTEEN = ADS1X15_REG_CONFIG_PGA_0_256V
+    }*/
+
+    // 3) PCF8574 Begin
+    if (!bedPCF.begin(0)) {
+      SERIAL_ECHOLNPGM("Erro ao iniciar PCF8574");
+    }
+    else {
+      SERIAL_ECHOLNPGM("PCF8574 iniciado");
+    }                
+      
+    // 4) Estado inicial do loop assíncrono
+    pending_ads_channel  = -1;
+    next_ads_channel     =  0;
 
     // Inicializa limites brutos e mantém watchdogs/parâmetros de PWM zerados
     for (uint8_t b = 0; b < MULTI_BED_COUNT; b++) {
       mintemp_raw_BED[b] = 0;
       maxtemp_raw_BED[b] = 32556;
       IF_DISABLED(PIDTEMPBED, next_bed_check_ms[b] = 0;);
-      SERIAL_ECHOPGM("Bed "); SERIAL_ECHO(b); SERIAL_ECHOLNPGM("Limits RAW setados");
+      SERIAL_ECHOPGM("Bed "); SERIAL_ECHO(b); SERIAL_ECHOLNPGM(" limits RAW setados");
       // NÃO reinicia o watchdog aqui — ele já está com target=0 e next_ms=0
       // Se quiser forçar a zero, descomente a linha abaixo:
       // TERN_(WATCH_BED, watch_bed[b].restart(0, 0));
@@ -235,7 +267,7 @@
     if (pending_ads_channel >= 0) {
       if (millis() - pending_ads_start_ms >= ADS_CONV_MS) {
         // leitura pronta
-        int16_t raw16 = bedADS.getValue();
+        int16_t raw16 = bedADS.getLastConversionResults();
         raw16 = raw16 < 0 ? 0 : raw16;
         SERIAL_ECHOPGM("Bed["); SERIAL_ECHO(pending_ads_channel); SERIAL_ECHOPGM("] raw16 = "); SERIAL_ECHOLN(raw16);
 
@@ -253,7 +285,7 @@
     // 2) Se não há conversão pendente, dispare a próxima:
     if (pending_ads_channel < 0) {
       SERIAL_ECHOPGM("Disparando requestADC no canal "); SERIAL_ECHOLN(next_ads_channel);
-      bedADS.requestADC(next_ads_channel);
+      bedADS.startADCReading(next_ads_channel, /*continuous=*/false);
       pending_ads_start_ms = millis();
       pending_ads_channel  = next_ads_channel;
       next_ads_channel    = (next_ads_channel + 1) % MULTI_BED_COUNT;
