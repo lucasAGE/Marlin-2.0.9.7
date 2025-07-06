@@ -63,13 +63,9 @@
 // Identificadores de elementos. Valores positivos são hotends. Valores negativos são outros aquecedores ou resfriadores.
 
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-      #include <Wire.h>
-      #include "ADS1X15.h"
-      #include "PCF8574.h"  
-      
-      #ifdef SIMULAR_FLUXOADSPCF  
-        
-      #endif
+  #include <Wire.h>
+  #include "ADS1X15.h"
+  #include "PCF8574.h"           
 #endif
 typedef enum : int8_t {
   H_REDUNDANT = HID_REDUNDANT,
@@ -710,6 +706,14 @@ class Temperature {
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
         static raw_adc_t mintemp_raw_BED[MULTI_BED_COUNT];
         static raw_adc_t maxtemp_raw_BED[MULTI_BED_COUNT];
+        /// Próximo canal a disparar conversão
+        static uint8_t next_ads_channel;
+        /// Canal cuja conversão está pendente de leitura
+        static int8_t  pending_ads_channel;
+        /// Timestamp em ms de quando disparou a conversão pendente
+        static unsigned long pending_ads_start_ms;
+        /// Tempo mínimo de conversão em ms (128 SPS ≃ 8 ms)
+        static constexpr uint16_t ADS_CONV_MS = 8;
       #else
         static raw_adc_t mintemp_raw_BED;
         static raw_adc_t maxtemp_raw_BED;

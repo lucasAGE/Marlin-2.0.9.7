@@ -49,6 +49,11 @@
   constexpr uint8_t BED2_PCF_BIT = 2;
   constexpr uint8_t BED3_PCF_BIT = 3;
 
+  uint8_t       Temperature::next_ads_channel       = 0;
+  int8_t        Temperature::pending_ads_channel    = -1;
+  unsigned long Temperature::pending_ads_start_ms   = 0;
+
+
   //==============================================================================
   // Converte raw16 do ADS → raw10 (módulo e down-sampling)
   //==============================================================================
@@ -133,7 +138,7 @@
   // Leitura das temperaturas via ADS1115
   //==============================================================================
 
-  /* VERSAO 1 DE read_bed_temperatures_ads1115
+  /* Versão 1 de read_bed_temperatures_ads1115
   void Temperature::read_bed_temperatures_ads1115() {
     #pragma message("🚧 Temperature::read_bed_temperatures_ads1115 compilada")
       for (uint8_t i = 0; i < MULTI_BED_COUNT; i++) {
@@ -158,9 +163,10 @@
       SERIAL_ECHOLNPGM("Reading ads1115"); 
   }*/
 
-  // VERSAO 2 DE read_bed_temperatures_ads1115
+  /*
+  // Versão 2 DE read_bed_temperatures_ads1115
   void Temperature::read_bed_temperatures_ads1115() {
-  #pragma message("🚧 Temperature::read_bed_temperatures_ads1115 non-blocking compilada")
+  #pragma message("🚧 Temperature::read_bed_temperatures_ads1115 assíncrona compilada")
 
   const uint16_t timeout = 100;  // tempo máximo em ms
 
@@ -218,6 +224,34 @@
     SERIAL_ECHOPGM("Bed[");SERIAL_ECHO(int(i));SERIAL_ECHOPGM("] celsius = ");SERIAL_ECHOLN(temp_bed[i].celsius);    
   }
   SERIAL_ECHOLN("read_bed_temperatures_ads1115() concluIda");
+  }
+  */
+
+  // Versão 3 de read_bed_temperatures_ads1115
+  void Temperature::read_bed_temperatures_ads1115() {
+    #pragma message("🚧 Temperature::read_bed_temperatures_ads1115 assíncrona")
+
+    // 1) Se há conversão pendente e já passou o tempo mínimo, faça a leitura:
+    if (pending_ads_channel >= 0) {
+      if (millis() - pending_ads_start_ms >= ADS_CONV_MS) {
+        // leitura pronta
+        int16_t raw16 = bedADS.getValue();
+        raw16 = raw16 < 0 ? 0 : raw16;
+        uint16_t raw10 = raw16_to_raw10(raw16);
+        temp_bed[pending_ads_channel].setraw(raw10);
+        temp_bed[pending_ads_channel].celsius = analog_to_celsius_bed(raw10);
+        // marca como lido
+        pending_ads_channel = -1;
+      }
+    }
+
+    // 2) Se não há conversão pendente, dispare a próxima:
+    if (pending_ads_channel < 0) {
+      bedADS.requestADC(next_ads_channel);
+      pending_ads_start_ms = millis();
+      pending_ads_channel  = next_ads_channel;
+      next_ads_channel    = (next_ads_channel + 1) % MULTI_BED_COUNT;
+    }
   }
 
   //==============================================================================
@@ -2313,6 +2347,9 @@ void Temperature::task() {
     //########################          TCC LUCAS          ################################################
     //#####################################################################################################
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+
+    read_bed_temperatures_ads1115(); // dispara/cola leituras assíncronas
+         
     for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
       manage_heated_beds(b, ms);
     }
@@ -2757,9 +2794,7 @@ void Temperature::updateTemperaturesFromRawValues() {
   //#####################################################################################################
   //########################          TCC LUCAS          ################################################
   //#####################################################################################################
-   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
-    read_bed_temperatures_ads1115();
-   #else
+   #if DISABLED(ENABLE_MULTI_HEATED_BEDS)    
      temp_bed.celsius = analog_to_celsius_bed(temp_bed.getraw());
    #endif
 
