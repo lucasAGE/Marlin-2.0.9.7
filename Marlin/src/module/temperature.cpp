@@ -94,7 +94,7 @@
     bedADS.begin();
     SERIAL_ECHOLNPGM("ADS1115 iniciado");
     bedADS.setGain(2);          // +-2.048V (ideal para NTCs com divisor resistivo)
-    bedADS.setDataRate(0);      // 128 SPS (padrão, estável)
+    bedADS.setDataRate(4);      // 128 SPS (padrão, estável)
     bedADS.setMode(1);          // Single-shot
     //PCF
     bedPCF.begin();
@@ -237,9 +237,14 @@
         // leitura pronta
         int16_t raw16 = bedADS.getValue();
         raw16 = raw16 < 0 ? 0 : raw16;
+        SERIAL_ECHOPGM("Bed["); SERIAL_ECHO(pending_ads_channel); SERIAL_ECHOPGM("] raw16 = "); SERIAL_ECHOLN(raw16);
+
         uint16_t raw10 = raw16_to_raw10(raw16);
+        SERIAL_ECHOPGM("Bed["); SERIAL_ECHO(pending_ads_channel); SERIAL_ECHOPGM("] raw10 = "); SERIAL_ECHOLN(raw10);
+
         temp_bed[pending_ads_channel].setraw(raw10);
         temp_bed[pending_ads_channel].celsius = analog_to_celsius_bed(raw10);
+        SERIAL_ECHOPGM("Bed["); SERIAL_ECHO(pending_ads_channel); SERIAL_ECHOPGM("] celsius = "); SERIAL_ECHOLN(temp_bed[pending_ads_channel].celsius);
         // marca como lido
         pending_ads_channel = -1;
       }
@@ -247,6 +252,7 @@
 
     // 2) Se não há conversão pendente, dispare a próxima:
     if (pending_ads_channel < 0) {
+      SERIAL_ECHOPGM("Disparando requestADC no canal "); SERIAL_ECHOLN(next_ads_channel);
       bedADS.requestADC(next_ads_channel);
       pending_ads_start_ms = millis();
       pending_ads_channel  = next_ads_channel;
@@ -2342,10 +2348,10 @@ void Temperature::task() {
    */
   TERN_(FILAMENT_WIDTH_SENSOR, filwidth.update_volumetric());
 
- // Handle Bed Temp Errors, Heating Watch, etc.
-   //#####################################################################################################
-    //########################          TCC LUCAS          ################################################
-    //#####################################################################################################
+  // Handle Bed Temp Errors, Heating Watch, etc.
+  //#####################################################################################################
+  //########################          TCC LUCAS          ################################################
+  //#####################################################################################################
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
 
     read_bed_temperatures_ads1115(); // dispara/cola leituras assíncronas
@@ -2364,7 +2370,6 @@ void Temperature::task() {
     manage_heated_bed(ms);
   #endif
   
-
   // Handle Heated Chamber Temp Errors, Heating Watch, etc.
   TERN_(HAS_HEATED_CHAMBER, manage_heated_chamber(ms));
 
@@ -2381,8 +2386,13 @@ void Temperature::task() {
       }
     #endif
   #endif
+
+  //#####################################################################################################
+  //########################          TCC LUCAS          ################################################
+  //#####################################################################################################
    
   delay(1000);
+
   UNUSED(ms);  
 }
 
