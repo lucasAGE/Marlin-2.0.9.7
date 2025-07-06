@@ -713,7 +713,20 @@ class Temperature {
         /// Timestamp em ms de quando disparou a conversão pendente
         static unsigned long pending_ads_start_ms;
         /// Tempo mínimo de conversão em ms (128 SPS ≃ 8 ms)
-        static constexpr uint16_t ADS_CONV_MS = 8;
+        /*
+          |  data rate  |  ADS101x  |  ADS111x  |   Notes   |
+          |:-----------:|----------:|----------:|:---------:|
+          |     0       |   128     |    8      |  slowest  |
+          |     1       |   250     |    16     |           |
+          |     2       |   490     |    32     |           |
+          |     3       |   920     |    64     |           |
+          |     4       |   1600    |    128    |  default  |
+          |     5       |   2400    |    250    |           |
+          |     6       |   3300    |    475    |           |
+          |     7       |   3300    |    860    |  fastest  |
+          */
+          
+        static constexpr uint16_t ADS_CONV_MS = 150;//ms
       #else
         static raw_adc_t mintemp_raw_BED;
         static raw_adc_t maxtemp_raw_BED;

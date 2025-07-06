@@ -94,7 +94,7 @@
     bedADS.begin();
     SERIAL_ECHOLNPGM("ADS1115 iniciado");
     bedADS.setGain(2);          // +-2.048V (ideal para NTCs com divisor resistivo)
-    bedADS.setDataRate(4);      // 128 SPS (padrão, estável)
+    bedADS.setDataRate(0);      // 128 SPS (padrão, estável)
     bedADS.setMode(1);          // Single-shot
     //PCF
     bedPCF.begin();
@@ -2391,7 +2391,7 @@ void Temperature::task() {
   //########################          TCC LUCAS          ################################################
   //#####################################################################################################
    
-  delay(1000);
+  //delay(1000);
 
   UNUSED(ms);  
 }
