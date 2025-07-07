@@ -590,7 +590,6 @@ class Temperature {
 
         , NR_HEATER_IDLE
       };
-
       
       /**
      * Retorna o índice de inatividade (IdleIndex) correspondente a um determinado ID de aquecedor.
@@ -625,7 +624,6 @@ class Temperature {
       static heater_idle_t heater_idle[NR_HEATER_IDLE];
 
     #endif // HEATER_IDLE_HANDLER
-
 
     #if HAS_ADC_BUTTONS
         static uint32_t current_ADCKey_raw;
@@ -705,16 +703,7 @@ class Temperature {
       // 3) Limites brutos de temperatura (mintemp/maxtemp)
       #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
         static raw_adc_t mintemp_raw_BED[MULTI_BED_COUNT];
-        static raw_adc_t maxtemp_raw_BED[MULTI_BED_COUNT];
-        /// Próximo canal a disparar conversão
-        static uint8_t next_ads_channel;
-        /// Canal cuja conversão está pendente de leitura
-        static int8_t  pending_ads_channel;
-        /// Timestamp em ms de quando disparou a conversão pendente
-        static unsigned long pending_ads_start_ms;
-        /// Tempo mínimo de conversão em ms (128 SPS ≃ 8 ms)
-       
-        static constexpr uint16_t ADS_CONV_MS = 150;//ms
+        static raw_adc_t maxtemp_raw_BED[MULTI_BED_COUNT];       
       #else
         static raw_adc_t mintemp_raw_BED;
         static raw_adc_t maxtemp_raw_BED;
@@ -1144,6 +1133,8 @@ class Temperature {
         
       // Inicialização e leitura I²C
       static void initpcf8574ads1115beds();
+      static bool safeWriteRegister(uint8_t reg, uint16_t value);
+      static bool manualStartConversion(uint8_t channel);
       static void read_bed_temperatures_ads1115();
       static void update_bed_pwm_pcf8574();
       // Marcação de camas com PWM “sujo”      
@@ -1166,7 +1157,6 @@ class Temperature {
         bool click_to_cancel     = false
       );  
      
-
       static void manage_heated_bed(const millis_t &ms);
       static void manage_heated_beds(const uint8_t bed, const millis_t &ms); 
 
@@ -1418,25 +1408,25 @@ class Temperature {
     #endif
 
   private:
-        /**
-     * Leitura e conversão das temperaturas brutas (ADC → Celsius).
-     *
-     * - raw_temps_ready: flag volátil que indica se as leituras brutas dos sensores (raw ADC)
-     *   já foram realizadas e estão prontas para serem convertidas em temperatura real.
-     *
-     * - update_raw_temperatures(): função que realiza a leitura dos sensores e preenche os valores brutos.
-     *   Esta função é normalmente chamada em interrupções ou no início do ciclo térmico principal.
-     *
-     * - updateTemperaturesFromRawValues(): converte os valores brutos de todos os sensores (inclusive hotends,
-     *   cama(s), câmara, etc.) para temperaturas em Celsius, preenchendo as variáveis `celsius` correspondentes.
-     *
-     * - updateTemperaturesIfReady(): função auxiliar que verifica se `raw_temps_ready` está true.
-     *   Se estiver, chama `updateTemperaturesFromRawValues()`, reseta a flag e retorna true.
-     *   Caso contrário, retorna false sem fazer nada.
-     *
-     * Essa estrutura permite que a conversão só ocorra quando os dados estiverem prontos,
-     * garantindo sincronismo entre leitura e cálculo.
-     */
+   /**
+   * Leitura e conversão das temperaturas brutas (ADC → Celsius).
+   *
+   * - raw_temps_ready: flag volátil que indica se as leituras brutas dos sensores (raw ADC)
+   *   já foram realizadas e estão prontas para serem convertidas em temperatura real.
+   *
+   * - update_raw_temperatures(): função que realiza a leitura dos sensores e preenche os valores brutos.
+   *   Esta função é normalmente chamada em interrupções ou no início do ciclo térmico principal.
+   *
+   * - updateTemperaturesFromRawValues(): converte os valores brutos de todos os sensores (inclusive hotends,
+   *   cama(s), câmara, etc.) para temperaturas em Celsius, preenchendo as variáveis `celsius` correspondentes.
+   *
+   * - updateTemperaturesIfReady(): função auxiliar que verifica se `raw_temps_ready` está true.
+   *   Se estiver, chama `updateTemperaturesFromRawValues()`, reseta a flag e retorna true.
+   *   Caso contrário, retorna false sem fazer nada.
+   *
+   * Essa estrutura permite que a conversão só ocorra quando os dados estiverem prontos,
+   * garantindo sincronismo entre leitura e cálculo.
+   */
 
     // Reading raw temperatures and converting to Celsius when ready
     static volatile bool raw_temps_ready;
@@ -1498,25 +1488,25 @@ class Temperature {
         #endif
 
         //#####################################################################################################
-         //########################          TCC LUCAS          ################################################
-         //#####################################################################################################
-         /**
-         * Define os índices de proteção térmica (runaway) para as camas aquecidas.
-         *
-         * Usado internamente pelo sistema de proteção térmica do Marlin (THERMAL_PROTECTION_BED),
-         * para associar cada cama aquecida ao seu respectivo índice de controle de runaway.
-         *
-         * - Em sistemas com múltiplas camas (ENABLE_MULTI_HEATED_BEDS ativado):
-         *     Define um índice específico para cada cama, usando:
-         *       RUNAWAY_IND_BED0, RUNAWAY_IND_BED1, ..., até MULTI_BED_COUNT.
-         *     A macro REPEAT é usada para gerar automaticamente os índices com base na quantidade de camas.
-         *
-         * - Em sistemas com cama única:
-         *     Define apenas o índice padrão: RUNAWAY_IND_BED
-         *
-         * Esses índices são utilizados para controlar e monitorar o tempo máximo permitido
-         * para que a temperatura alcance o setpoint. Caso contrário, ocorre erro de runaway.
-        */
+        //########################          TCC LUCAS          ################################################
+        //#####################################################################################################
+        /**
+       * Define os índices de proteção térmica (runaway) para as camas aquecidas.
+       *
+       * Usado internamente pelo sistema de proteção térmica do Marlin (THERMAL_PROTECTION_BED),
+       * para associar cada cama aquecida ao seu respectivo índice de controle de runaway.
+       *
+       * - Em sistemas com múltiplas camas (ENABLE_MULTI_HEATED_BEDS ativado):
+       *     Define um índice específico para cada cama, usando:
+       *       RUNAWAY_IND_BED0, RUNAWAY_IND_BED1, ..., até MULTI_BED_COUNT.
+       *     A macro REPEAT é usada para gerar automaticamente os índices com base na quantidade de camas.
+       *
+       * - Em sistemas com cama única:
+       *     Define apenas o índice padrão: RUNAWAY_IND_BED
+       *
+       * Esses índices são utilizados para controlar e monitorar o tempo máximo permitido
+       * para que a temperatura alcance o setpoint. Caso contrário, ocorre erro de runaway.
+       */
         
         #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
           #define _RUNAWAY_IND_B(N) , RUNAWAY_IND_BED##N
@@ -1525,7 +1515,7 @@ class Temperature {
         #else
           OPTARG(THERMAL_PROTECTION_BED, RUNAWAY_IND_BED)
         #endif
-        
+                
         // Chamber, Cooler…
         OPTARG(THERMAL_PROTECTION_CHAMBER, RUNAWAY_IND_CHAMBER)
         OPTARG(THERMAL_PROTECTION_COOLER,  RUNAWAY_IND_COOLER)
