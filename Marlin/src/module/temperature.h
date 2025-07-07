@@ -1132,9 +1132,7 @@ class Temperature {
       static PCF8574 bedPCF;
         
       // Inicialização e leitura I²C
-      static void initpcf8574ads1115beds();
-      static bool safeWriteRegister(uint8_t reg, uint16_t value);
-      static bool manualStartConversion(uint8_t channel);
+      static void initpcf8574ads1115beds();      
       static void read_bed_temperatures_ads1115();
       static void update_bed_pwm_pcf8574();
       // Marcação de camas com PWM “sujo”      

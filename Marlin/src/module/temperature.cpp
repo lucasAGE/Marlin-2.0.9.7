@@ -48,18 +48,17 @@
   constexpr uint8_t BED1_PCF_BIT = 1;
   constexpr uint8_t BED2_PCF_BIT = 2;
   constexpr uint8_t BED3_PCF_BIT = 3;
+
+  // --- constantes de configuração ---
+  constexpr uint8_t    ADS_ADDR      = ADS1115_ADDRESS;      // 0x48  
+  static const uint16_t muxByChannel[MULTI_BED_COUNT] = {
+    ADS1X15_REG_CONFIG_MUX_SINGLE_0,
+    ADS1X15_REG_CONFIG_MUX_SINGLE_1,
+    ADS1X15_REG_CONFIG_MUX_SINGLE_2,
+    ADS1X15_REG_CONFIG_MUX_SINGLE_3
+  };
+  static constexpr uint16_t convTimeMs = 8;    // ≈8 ms para 128 SPS
   
-  //Variaveis para leitura ADS1115
-  static constexpr uint8_t  ADS_ADDR      = ADS1115_ADDRESS;
-  static constexpr uint16_t ADS_TIMEOUT_MS =  20;   // ms para timeout de I²C
-  static uint8_t            _adc_channel   = 0;    // canal atual
-  static bool               _adc_pending   = false;// conversão pendente?
-  static uint32_t           _adc_start_ms  = 0;    // timestamp do start
-  static constexpr uint16_t CONV_MS        =   8;  // ~8ms para 128SPS
-
-  static uint16_t           ads_gain;      // ex: ADS1X15_REG_CONFIG_PGA_2_048V
-  static uint16_t           ads_dataRate;  // ex: ADS1X15_REG_CONFIG_DR_128SPS  
-
   //==============================================================================
   // Converte raw16 do ADS → raw10 (módulo e down-sampling)
   //==============================================================================
@@ -103,12 +102,10 @@
     else {
       SERIAL_ECHOLNPGM("Adafruit ADS1115 iniciado");
     }
-    bedADS.setGain(GAIN_TWO);   
-    ads_gain = ADS1X15_REG_CONFIG_PGA_2_048V;                     // ±6.144V default :contentReference[oaicite:1]{index=1}
-    bedADS.setDataRate(RATE_ADS1115_128SPS);              // 128 SPS :contentReference[oaicite:2]{index=2}
-    ads_dataRate = RATE_ADS1115_128SPS;
-    safeWriteRegister(ADS1X15_REG_POINTER_HITHRESH, 0x8000);
-    safeWriteRegister(ADS1X15_REG_POINTER_LOWTHRESH, 0x0000);
+    bedADS.setGain(GAIN_TWO);                            // ±6.144V default :contentReference[oaicite:1]{index=1}
+    bedADS.setDataRate(RATE_ADS1115_128SPS);            // 128 SPS :contentReference[oaicite:2]{index=2}    
+    
+    bedADS.startADCReading(muxByChannel[0], /*continuous=*/false);      
 
     /*
     #define RATE_ADS1115_8SPS (0x0000)   ///< 8 samples per second
@@ -175,84 +172,39 @@
   //==============================================================================
   // Leitura das temperaturas via ADS1115
   //==============================================================================  
-
-  // Função de “bus-recovery” + timeout na escrita de registrador
-  bool Temperature::safeWriteRegister(uint8_t reg, uint16_t value) {
-    Wire.beginTransmission(ADS_ADDR);
-    Wire.write(reg);
-    Wire.write(uint8_t(value >> 8));
-    Wire.write(uint8_t(value & 0xFF));
-    int err = Wire.endTransmission();
-    hal.watchdog_refresh();
-    return (err == 0);
-  }
-
-  // Dispara a conversão configurando os registradores “na mão”
-  bool Temperature::manualStartConversion(uint8_t channel) {
-    // monta o valor do CONFIG igual ao Adafruit:
-    uint16_t config =
-        ADS1X15_REG_CONFIG_CQUE_1CONV
-      | ADS1X15_REG_CONFIG_CLAT_NONLAT
-      | ADS1X15_REG_CONFIG_CPOL_ACTVLOW
-      | ADS1X15_REG_CONFIG_CMODE_TRAD
-      | ADS1X15_REG_CONFIG_MODE_SINGLE
-      | ads_gain 
-      | ads_dataRate
-      | (uint16_t)MUX_BY_CHANNEL[channel]
-      | ADS1X15_REG_CONFIG_OS_SINGLE;
-
-    return safeWriteRegister(ADS1X15_REG_POINTER_CONFIG, config);
-  }
-
+  
   // Versão 4 de read_bed_temperatures_ads1115
   void Temperature::read_bed_temperatures_ads1115() {
-    SERIAL_ECHOPGM("inicio read_ads1115");
-    // 1) se não há conversão pendente, dispare uma e saia
-    if (!_adc_pending) {
-      if (manualStartConversion(_adc_channel)) {
-        _adc_start_ms = millis();
-        _adc_pending  = true;
-      }
-      return;
-    }
-
-    // 2) se está pendente e o tempo mínimo já passou, leia o resultado
-    if (millis() - _adc_start_ms >= CONV_MS) {
-      // Leitura do registrador de conversão
-      Wire.beginTransmission(ADS_ADDR);
-      SERIAL_ECHOPGM("I2C comeco transmissao");
-      Wire.write(ADS1X15_REG_POINTER_CONVERT);
-      if (Wire.endTransmission() != 0) {
-        _adc_pending = false;  // falhou, libera e avança canal
-        _adc_channel = (_adc_channel + 1) % MULTI_BED_COUNT;
-        return;
-      }
-      SERIAL_ECHOPGM("I2C comeco requisicao");
-      Wire.requestFrom(int(ADS_ADDR), 2);
-      if (Wire.available() < 2) {
-        _adc_pending = false;
-        _adc_channel = (_adc_channel + 1) % MULTI_BED_COUNT;
-        return;
-      }
-      int16_t raw16 = (Wire.read() << 8) | Wire.read();
+    // estado estático, preservado entre chamadas:
+    static uint8_t  ch          = 0;  
+    static uint32_t t0          = 0;  
+    static bool     adc_pending = true;  // iniciamos já pendente da primeira
+    // 1) se pendente, só lemos quando o tempo de conversão tiver passado
+    if (adc_pending) {
+      if (millis() - t0 < convTimeMs) return;           // ainda convertendo
+      // passou o tempo, agora lê:
+      int16_t raw16 = bedADS.getLastConversionResults();
       if (raw16 < 0) raw16 = -raw16;
-      
-
-      // 3) converte e armazena
       uint16_t raw10 = raw16_to_raw10(raw16);
-      SERIAL_ECHOPGM("raw10 to raw16 bem sucedido");
-      temp_bed[_adc_channel].setraw(raw10);
-      temp_bed[_adc_channel].celsius = analog_to_celsius_bed(raw10);
+      temp_bed[ch].celsius = analog_to_celsius_bed(raw10);
 
-      // 4) debug enxuto
-      SERIAL_ECHOPGM("B"); SERIAL_ECHO(_adc_channel);
-      SERIAL_ECHOPGM("="); SERIAL_ECHOLN(raw10);
-
-      // 5) limpa pendência e avança canal
-      _adc_pending  = false;
-      _adc_channel = (_adc_channel + 1) % MULTI_BED_COUNT;
+      // ---- Serial Echo ----
+    SERIAL_ECHOPGM("Bed["); SERIAL_ECHO(ch);
+    SERIAL_ECHOPGM("] raw10="); SERIAL_ECHO(raw10);
+    
+      adc_pending = false;
     }
-  }  
+
+    // 2) se não estiver mais pendente, dispare a próxima conversão
+    if (!adc_pending) {
+      // avança canal circular
+      ch = (ch + 1) % MULTI_BED_COUNT;
+      // dispara novo single‐shot
+      bedADS.startADCReading(muxByChannel[ch], /*continuous=*/false);
+      t0          = millis();
+      adc_pending = true;
+    }
+  }
 
   //==============================================================================
   // Controle das Camas pelo PCF8574
@@ -2347,9 +2299,7 @@ void Temperature::task() {
   //#####################################################################################################
   //########################          TCC LUCAS          ################################################
   //#####################################################################################################
-  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)  
-
-    read_bed_temperatures_ads1115(); 
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)        
            
     for (uint8_t b = 0; b < MULTI_BED_COUNT; ++b) {
       manage_heated_beds(b, ms);

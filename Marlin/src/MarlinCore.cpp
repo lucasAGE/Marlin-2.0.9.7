@@ -252,7 +252,6 @@
   #include "feature/easythreed_ui.h"
 #endif
 
-
 PGMSTR(M112_KILL_STR, "M112 Shutdown");
 
 MarlinState marlin_state = MF_INITIALIZING;
@@ -782,6 +781,9 @@ void idle(bool no_stepper_sleep/*=false*/) {
 
   // Core Marlin activities
   manage_inactivity(no_stepper_sleep);
+
+  // 1) Leitura não-bloqueante das camas
+  thermalManager.read_bed_temperatures_ads1115();
 
   // Manage Heaters (and Watchdog)
   thermalManager.task();
@@ -1681,7 +1683,6 @@ void loop() {
   //#####################################################################################################
   //########################          TCC LUCAS          ################################################
   //#####################################################################################################
-  
   //delay(1000);
 
   } while (ENABLED(__AVR__)); // Loop forever on slower (AVR) boards
