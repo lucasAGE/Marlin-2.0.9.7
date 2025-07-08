@@ -65,7 +65,7 @@
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
   #include <Wire.h>
   #include <Adafruit_ADS1X15.h> 
-  #include "PCF8574.h"           
+  #include "PCF8574.h"  
 #endif
 typedef enum : int8_t {
   H_REDUNDANT = HID_REDUNDANT,
@@ -1132,6 +1132,7 @@ class Temperature {
       static PCF8574 bedPCF;
         
       // Inicialização e leitura I²C
+      static void busRecovery();
       static void initpcf8574ads1115beds();      
       static void read_bed_temperatures_ads1115();
       static void update_bed_pwm_pcf8574();

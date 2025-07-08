@@ -41,24 +41,11 @@
 //#####################################################################################################
 #if ENABLED(ENABLE_MULTI_HEATED_BEDS)    
 
-  Adafruit_ADS1115 Temperature::bedADS; // Leitura dos termistores via ADS1115
-  PCF8574 Temperature::bedPCF(PCF8574_ADDRESS, &Wire); // Acionamento dos MOSFETs via PCF8574
-
   constexpr uint8_t BED0_PCF_BIT = 0;
   constexpr uint8_t BED1_PCF_BIT = 1;
   constexpr uint8_t BED2_PCF_BIT = 2;
-  constexpr uint8_t BED3_PCF_BIT = 3;
-
-  // --- constantes de configuração ---
-  constexpr uint8_t    ADS_ADDR      = ADS1115_ADDRESS;      // 0x48  
-  static const uint16_t muxByChannel[MULTI_BED_COUNT] = {
-    ADS1X15_REG_CONFIG_MUX_SINGLE_0,
-    ADS1X15_REG_CONFIG_MUX_SINGLE_1,
-    ADS1X15_REG_CONFIG_MUX_SINGLE_2,
-    ADS1X15_REG_CONFIG_MUX_SINGLE_3
-  };
-  static constexpr uint16_t convTimeMs = 8;    // ≈8 ms para 128 SPS
-  
+  constexpr uint8_t BED3_PCF_BIT = 3;  
+    
   //==============================================================================
   // Converte raw16 do ADS → raw10 (módulo e down-sampling)
   //==============================================================================
@@ -71,6 +58,32 @@
     return raw10 > 1023 ? 1023 : raw10;    
   }
 
+  Adafruit_ADS1115 Temperature::bedADS; // Leitura dos termistores via ADS1115
+  PCF8574 Temperature::bedPCF(PCF8574_ADDRESS, &Wire); // Acionamento dos MOSFETs via PCF8574
+
+  //---------------------------------------------------------------------------
+  // Bus recovery: "9 clocks" para liberar linhas presas
+  //---------------------------------------------------------------------------
+
+  void Temperature::busRecovery() {
+  pinMode(I2C_SCL_PIN, OUTPUT);
+  pinMode(I2C_SDA_PIN, OUTPUT);
+  // Libera SDA
+  digitalWrite(I2C_SDA_PIN, HIGH);
+  // Gere 9 pulsos de clock para liberar escravos
+  for (int i = 0; i < 9; i++) {
+    digitalWrite(I2C_SCL_PIN, HIGH);
+    delayMicroseconds(5);
+    digitalWrite(I2C_SCL_PIN, LOW);
+    delayMicroseconds(5);
+  }
+  // Volte ao estado I2C
+  pinMode(I2C_SDA_PIN, INPUT_PULLUP);
+  pinMode(I2C_SCL_PIN, INPUT_PULLUP);
+  Wire.begin();            // reinicializa hardware I2C
+  Wire.setClock(WIRE_CLOCK_I2C);
+  } 
+
   //==============================================================================
   // Setup de sensores
   //==============================================================================
@@ -80,7 +93,7 @@
     // Inicializa I²C e dispositivos externos
     Wire.begin();
     Wire.setClock(WIRE_CLOCK_I2C);
-
+    
     // Scanner I²C usando só SERIAL_ECHO/SERIAL_ECHOLN
     SERIAL_ECHOLNPGM("Iniciando I2C scan...");
     for (uint8_t addr = 1; addr < 127; ++addr) {
@@ -95,17 +108,16 @@
     }
     SERIAL_ECHOLNPGM("Scan I2C concluído.");
 
-    // 2) ADS1115 Begin
+    // ADS1115 Begin
     if (!bedADS.begin(ADS1X15_ADDRESS, &Wire)) {          // begin(adr, bus) :contentReference[oaicite:0]{index=0}
       SERIAL_ECHOLNPGM("Erro ao iniciar Adafruit ADS1115");
+      busRecovery();
     }
     else {
       SERIAL_ECHOLNPGM("Adafruit ADS1115 iniciado");
     }
     bedADS.setGain(GAIN_TWO);                            // ±6.144V default :contentReference[oaicite:1]{index=1}
     bedADS.setDataRate(RATE_ADS1115_128SPS);            // 128 SPS :contentReference[oaicite:2]{index=2}    
-    
-    bedADS.startADCReading(muxByChannel[0], /*continuous=*/false);      
 
     /*
     #define RATE_ADS1115_8SPS (0x0000)   ///< 8 samples per second
@@ -130,6 +142,7 @@
     // 3) PCF8574 Begin
     if (!bedPCF.begin(0)) {
       SERIAL_ECHOLNPGM("Erro ao iniciar PCF8574");
+      busRecovery();
     }
     else {
       SERIAL_ECHOLNPGM("PCF8574 iniciado");
@@ -143,7 +156,7 @@
       SERIAL_ECHOPGM("Bed "); SERIAL_ECHO(b); SERIAL_ECHOLNPGM(" limits RAW setados");
       // NÃO reinicia o watchdog aqui — ele já está com target=0 e next_ms=0
       // Se quiser forçar a zero, descomente a linha abaixo:
-      // TERN_(WATCH_BED, watch_bed[b].restart(0, 0));
+       //TERN_(WATCH_BED, watch_bed[b].restart(0, 0));
     }
     SERIAL_ECHOPGM("PCF8574 isConnected(): ");
     SERIAL_ECHOLN(bedPCF.isConnected());
@@ -166,7 +179,7 @@
     #endif    
 
     // Desliga todas as saídas de uma vez
-    bedPCF.write8(0);
+    //bedPCF.write8(0);
   }
   
   //==============================================================================
@@ -175,35 +188,41 @@
   
   // Versão 4 de read_bed_temperatures_ads1115
   void Temperature::read_bed_temperatures_ads1115() {
-    // estado estático, preservado entre chamadas:
-    static uint8_t  ch          = 0;  
-    static uint32_t t0          = 0;  
-    static bool     adc_pending = true;  // iniciamos já pendente da primeira
-    // 1) se pendente, só lemos quando o tempo de conversão tiver passado
-    if (adc_pending) {
-      if (millis() - t0 < convTimeMs) return;           // ainda convertendo
-      // passou o tempo, agora lê:
-      int16_t raw16 = bedADS.getLastConversionResults();
-      if (raw16 < 0) raw16 = -raw16;
-      uint16_t raw10 = raw16_to_raw10(raw16);
-      temp_bed[ch].celsius = analog_to_celsius_bed(raw10);
+    #pragma message("🚧 read_bed_temperatures_ads1115 assíncrona compilada")
+    SERIAL_ECHOLNPGM("read_bed_ADS1115 iniciado");
 
-      // ---- Serial Echo ----
-    SERIAL_ECHOPGM("Bed["); SERIAL_ECHO(ch);
-    SERIAL_ECHOPGM("] raw10="); SERIAL_ECHO(raw10);
+    // 0) Certifique-se de que o barramento I²C esteja livre
+    busRecovery();
     
-      adc_pending = false;
+    static bool     pending  = false;   
+
+    // 1) Se ainda não disparamos a conversão no canal 0, dispara e sai
+    if (!pending) {
+      bedADS.startADCReading(MUX_BY_CHANNEL[0], /*continuous=*/false);
+      pending = true;
+      return;
     }
 
-    // 2) se não estiver mais pendente, dispare a próxima conversão
-    if (!adc_pending) {
-      // avança canal circular
-      ch = (ch + 1) % MULTI_BED_COUNT;
-      // dispara novo single‐shot
-      bedADS.startADCReading(muxByChannel[ch], /*continuous=*/false);
-      t0          = millis();
-      adc_pending = true;
+    // 2) Se a conversão ainda não terminou, sai sem bloquear
+    if (!bedADS.conversionComplete()) {
+      return;
     }
+
+    // 3) Conversão pronta → lê o resultado
+    //    Mas, antes de ler, garanta de novo que o bus está OK:
+    busRecovery();
+
+    int16_t raw16 = bedADS.getLastConversionResults();
+    if (raw16 < 0) raw16 = -raw16;               // valor absoluto
+    uint16_t raw10 = raw16 >> 5;                 // reduz de 16→10 bits
+    float    c    = analog_to_celsius_bed(raw10);
+
+    // 4) Armazena e faz debug no serial  
+    SERIAL_ECHOPGM("Bed[0] raw10="); SERIAL_ECHO(raw10);
+    SERIAL_ECHOPGM(" → °C=");      SERIAL_ECHOLN(c);
+
+    // 5) Prepara para a próxima vez
+    pending = false;
   }
 
   //==============================================================================
@@ -2239,7 +2258,7 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
  *  - Update the heated bed PID output value
  */
 void Temperature::task() {
-  SERIAL_ECHOLNPGM("task iniciado.");
+  SERIAL_ECHOLNPGM("temperature task iniciado.");
 
   if (marlin_state == MF_INITIALIZING) return hal.watchdog_refresh(); // If Marlin isn't started, at least reset the watchdog! 
 
@@ -2255,6 +2274,10 @@ void Temperature::task() {
       quickstop_stepper();
     }
   #endif
+
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)        
+      read_bed_temperatures_ads1115();    
+  #endif  
 
   if (!updateTemperaturesIfReady()) return; // Will also reset the watchdog if temperatures are ready
 
@@ -2338,7 +2361,8 @@ void Temperature::task() {
    
   //delay(1000);
 
-  UNUSED(ms);  
+  UNUSED(ms);
+  SERIAL_ECHOLNPGM("temperature task terminado.");  
 }
 
 #define TEMP_AD595(RAW)  ((RAW) * 5.0 * 100.0 / float(HAL_ADC_RANGE) / (OVERSAMPLENR) * (TEMP_SENSOR_AD595_GAIN) + TEMP_SENSOR_AD595_OFFSET)
@@ -2870,7 +2894,7 @@ void Temperature::init() {
   //======================= Multi-Bed / ADS1115 + PCF8574 =======================
   #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
     // Multi-bed: ADS1115 + PCF8574
-    initpcf8574ads1115beds();  
+      
   #elif HAS_HEATED_BED
     // Fallback para cama única (código original)
     #ifdef BOARD_OPENDRAIN_MOSFETS

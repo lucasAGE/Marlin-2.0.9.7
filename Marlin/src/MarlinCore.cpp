@@ -782,10 +782,7 @@ void idle(bool no_stepper_sleep/*=false*/) {
   // Core Marlin activities
   manage_inactivity(no_stepper_sleep);
 
-  // 1) Leitura não-bloqueante das camas
-  thermalManager.read_bed_temperatures_ads1115();
-
-  // Manage Heaters (and Watchdog)
+    // Manage Heaters (and Watchdog)
   thermalManager.task();
 
   // Max7219 heartbeat, animation, etc
@@ -1130,6 +1127,7 @@ inline void tmc_standby_setup() {
  *  - Set Marlin to RUNNING State
  */
 void setup() {
+  SERIAL_ECHOLNPGM("void setup iniciado");
   #ifdef FASTIO_INIT
     FASTIO_INIT();
   #endif
@@ -1644,8 +1642,12 @@ void setup() {
   #endif
 
   marlin_state = MF_RUNNING;
-  
-  SERIAL_ECHOLNPGM("setup() completed.");
+
+  #if ENABLED(ENABLE_MULTI_HEATED_BEDS)
+  thermalManager.initpcf8574ads1115beds();
+  #endif
+
+  SERIAL_ECHOLNPGM("void setup terminado.");
 }
 
 /**
@@ -1683,7 +1685,9 @@ void loop() {
   //#####################################################################################################
   //########################          TCC LUCAS          ################################################
   //#####################################################################################################
-  //delay(1000);
+  delay(1000);
+
+  
 
   } while (ENABLED(__AVR__)); // Loop forever on slower (AVR) boards
 }
